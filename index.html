@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Search Sheets</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=DM+Mono:wght@400;500&family=Public+Sans:wght@400;500;700&display=swap">
+<style>
+/* Layout concept: every slide is a numbered drawing sheet (frame, grid paper, title block). Blueprint palette, one orange signal. */
+:root{
+  --paper:#EDF2F9; --panel:#F8FAFD; --ink:#0F2A63; --dim:#566A92; --line:#B7C5DF; --grid:rgba(15,42,99,.06);
+  --signal:#D9480F; --w1:#2A5BD7; --w2:#D9480F; --w3:#0B8571; --w4:#7A5AC8; --hatch:#9FB3D8;
+  --display:'Big Shoulders Display','Arial Narrow',Impact,sans-serif; --body:'Public Sans',system-ui,-apple-system,'Segoe UI',sans-serif; --mono:'DM Mono',ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0A2158; --panel:#0E2B6B; --ink:#EAF1FF; --dim:#9CB1DE; --line:#33529A; --grid:rgba(190,215,255,.07);
+  --signal:#FF7B47; --w1:#7FA5FF; --w2:#FF7B47; --w3:#4DD6BE; --w4:#B79CFF; --hatch:#3B5AA5; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0A2158; --panel:#0E2B6B; --ink:#EAF1FF; --dim:#9CB1DE; --line:#33529A; --grid:rgba(190,215,255,.07);
+  --signal:#FF7B47; --w1:#7FA5FF; --w2:#FF7B47; --w3:#4DD6BE; --w4:#B79CFF; --hatch:#3B5AA5; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;max-width:100%}
+body{position:relative}
+body{margin:0;background-color:var(--paper);color:var(--ink);font-family:var(--body);font-size:clamp(14px,min(1.5vw,2.7vh),28px);line-height:1.45;overflow:hidden;
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px);background-size:2em 2em}
+#app{position:relative;height:100%;display:flex;flex-direction:column;padding:10px}
+#frame{position:relative;flex:1;min-height:0;border:2px solid var(--ink);display:flex;flex-direction:column}
+#frame:before{content:"";position:absolute;inset:4px;border:1px solid var(--line);pointer-events:none}
+.stage{position:relative;flex:1;min-height:0}
+.sheet{display:none;position:absolute;inset:0;overflow:auto;padding:1.5em clamp(16px,3.2vw,3.2em) 1.2em;scrollbar-width:thin}
+.sheet.on{display:block}
+.hd{display:flex;align-items:flex-start;gap:1em;margin-bottom:.9em}
+.sn{font-family:var(--mono);font-size:.78em;letter-spacing:.08em;border:1.5px solid var(--ink);padding:.25em .55em;margin-top:.55em;white-space:nowrap}
+h1,h2{font-family:var(--display);font-weight:800;text-transform:uppercase;letter-spacing:.012em;line-height:.98;margin:0;text-wrap:balance}
+h1{font-size:3.1em} h2{font-size:2.35em}
+.lead{max-width:62ch;margin:.5em 0 0;font-size:1.02em}
+.mono,.tag{font-family:var(--mono);font-size:.76em;letter-spacing:.06em;text-transform:uppercase;color:var(--dim)}
+.two{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:1.4em}
+.two.wide{grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr)}
+@media (max-width:820px){.two,.two.wide{grid-template-columns:minmax(0,1fr)} h1{font-size:2.4em} h2{font-size:1.9em}}
+.box{border:1.5px solid var(--ink);background:var(--panel);padding:.8em 1em;min-width:0}
+.box>.tag:first-child{display:block;margin-bottom:.5em}
+.btn,.tab,.chipbtn{font:inherit;font-family:var(--mono);font-size:.78em;letter-spacing:.05em;text-transform:uppercase;color:var(--ink);background:transparent;border:1.5px solid var(--ink);padding:.4em .75em;cursor:pointer;border-radius:0}
+.btn:hover,.tab:hover,.chipbtn:hover{background:var(--ink);color:var(--paper)}
+.tab.on,.chipbtn.on{background:var(--ink);color:var(--paper)}
+:focus-visible{outline:3px solid var(--signal);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:.5em;align-items:center}
+input[type=text],select{font:inherit;font-family:var(--mono);font-size:.95em;color:var(--ink);background:var(--panel);border:1.5px solid var(--ink);padding:.45em .7em;border-radius:0;min-width:0;max-width:100%}
+input[type=text]{width:min(100%,30em)}
+input[type=range]{width:min(100%,22em);accent-color:var(--signal)}
+label.ck{display:inline-flex;gap:.45em;align-items:center;font-family:var(--mono);font-size:.8em;text-transform:uppercase;letter-spacing:.05em;cursor:pointer}
+input[type=checkbox],input[type=radio]{accent-color:var(--signal);width:1.05em;height:1.05em}
+.chip{display:inline-block;font-family:var(--mono);font-size:.86em;border:1.5px solid var(--ink);padding:.1em .5em;background:var(--panel);white-space:nowrap}
+.chip.drop{background-image:repeating-linear-gradient(135deg,transparent 0 .3em,var(--hatch) .3em .38em);color:var(--dim);text-decoration:line-through;border-style:dashed;border-color:var(--dim)}
+.chip.void{background-image:repeating-linear-gradient(135deg,transparent 0 .3em,var(--hatch) .3em .38em);border-style:dashed;border-color:var(--dim);color:transparent;user-select:none}
+.chip.chg{border-color:var(--signal);color:var(--signal);font-weight:500}
+.chip.hi{background:var(--signal);color:var(--paper);border-color:var(--signal)}
+.chip.on{background:var(--ink);color:var(--paper)}
+.hair{height:0;border-top:1px solid var(--line);margin:.8em 0}
+table{border-collapse:collapse;width:100%}
+th,td{border:1px solid var(--line);padding:.4em .6em;text-align:left;vertical-align:top}
+th{font-family:var(--mono);font-size:.74em;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--paper);background:var(--ink)}
+.scroll{overflow-x:auto;max-width:100%}
+.note{border-left:4px solid var(--signal);padding:.3em 0 .3em .8em;margin:.8em 0 0;max-width:66ch}
+.bal{display:inline-grid;place-items:center;width:1.6em;height:1.6em;border:1.5px solid var(--signal);border-radius:50%;font-family:var(--mono);font-size:.82em;color:var(--signal);margin-right:.4em;flex:none}
+.big{font-family:var(--display);font-weight:800;font-size:2.2em;line-height:1}
+.tokrow{display:flex;gap:.35em;margin-bottom:.35em;align-items:center}
+.tokrow>.tag{width:6.6em;flex:none}
+.tokrow .chip{width:6.4em;text-align:center;overflow:hidden;text-overflow:ellipsis}
+.bars{display:grid;gap:.35em}
+.brow{display:grid;grid-template-columns:8em minmax(0,1fr) 4.5em;gap:.6em;align-items:center}
+.brow .lab{font-family:var(--mono);font-size:.82em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.brow .val{font-family:var(--mono);font-size:.82em;text-align:right}
+.track{height:1.05em;background-image:repeating-linear-gradient(90deg,var(--line) 0 1px,transparent 1px 10%)}
+.fill{height:100%;background:var(--ink)}
+.stack{display:flex;height:100%}
+.stack i{display:block;height:100%;border-right:2px solid var(--paper)}
+.rk{display:grid;grid-template-columns:2.2em 2.8em minmax(7em,1.3fr) minmax(0,1.5fr) 3.6em 1.6em;gap:.5em;align-items:center;padding:.3em .4em;border-bottom:1px solid var(--line);cursor:pointer;font-size:.92em}
+.rk:hover,.rk.sel{background:var(--panel);outline:1.5px solid var(--ink);outline-offset:-1.5px}
+.rk .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rk .sc{font-family:var(--mono);text-align:right}
+.ok{display:inline-grid;place-items:center;width:1.35em;height:1.35em;border:2px double var(--ink);border-radius:50%;font-size:.8em}
+@media (max-width:620px){.rk{grid-template-columns:2em 3em minmax(0,1fr) 3.4em 1.4em}.rk .stk{grid-column:1/-1;order:9;height:.7em}.brow{grid-template-columns:5.5em minmax(0,1fr) 3.4em}}
+.postings{display:flex;flex-wrap:wrap;gap:.3em}
+.pc{font-family:var(--mono);font-size:.82em;border:1.5px solid var(--ink);padding:.05em .4em;background:var(--panel)}
+.pc b{color:var(--signal);font-weight:500}
+pre{margin:0;font-family:var(--mono);font-size:.82em;line-height:1.55;white-space:pre;overflow-x:auto;padding:.9em 1em;border:1.5px solid var(--ink);background:var(--panel)}
+.wk{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.5em}
+@media (max-width:620px){.wk{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.wkc{font:inherit;text-align:left;color:var(--ink);background:var(--panel);border:1.5px solid var(--ink);border-top-width:6px;padding:.35em .55em .45em;cursor:pointer;border-radius:0;min-width:0}
+.wkc b{font-family:var(--mono);font-size:.8em;font-weight:500;display:block;color:var(--dim)}
+.wkc span{display:block;font-size:.86em;line-height:1.2}
+.wkc.b1{border-top-color:var(--w1)} .wkc.b2{border-top-color:var(--w4)} .wkc.b3{border-top-color:var(--w3)} .wkc.b0{border-top-color:var(--dim)} .wkc.b4{border-top-color:var(--signal)}
+.wkc.on{background:var(--ink);color:var(--paper)} .wkc.on b{color:var(--paper)}
+.wkc.now:after{content:"YOU ARE HERE";display:block;font-family:var(--mono);font-size:.6em;letter-spacing:.08em;color:var(--signal);margin-top:.25em}
+.wkc.now.on:after{color:var(--paper)}
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:wrap}
+.flow>*{margin-right:-1.5px;margin-bottom:-1.5px}
+.step{font:inherit;text-align:left;color:var(--ink);background:var(--panel);border:1.5px solid var(--ink);padding:.5em .7em;cursor:pointer;border-radius:0;flex:1 1 7.5em;min-width:0}
+.step b{font-family:var(--mono);font-weight:500;display:block;font-size:.78em;color:var(--dim)}
+.step.on{background:var(--ink);color:var(--paper)} .step.on b{color:var(--paper)}
+.step.out{border-style:dashed}
+#foot{display:flex;align-items:stretch;border-top:2px solid var(--ink);min-height:2.6em}
+#foot>*{display:flex;align-items:center}
+#nav{gap:0}
+#nav .btn{border:0;border-right:1.5px solid var(--ink);height:100%;padding:0 1em;font-size:.9em}
+#ticks{flex:1;gap:.3em;padding:0 1em;min-width:0}
+#ticks i{flex:1;height:.55em;border:1.5px solid var(--ink);max-width:2.2em;cursor:pointer}
+#ticks i.on{background:var(--signal);border-color:var(--signal)} #ticks i.seen{background:var(--ink)}
+#tb{display:grid;grid-template-columns:auto auto auto;border-left:2px solid var(--ink)}
+#tb span{padding:.15em .9em;border-right:1px solid var(--line);font-family:var(--mono);font-size:.72em;letter-spacing:.07em;text-transform:uppercase;display:flex;align-items:center;white-space:nowrap}
+#tb span:last-child{border-right:0}
+@media (max-width:560px){#tb span:nth-child(2){display:none}#nav .btn{padding:0 .55em;font-size:.72em}#tb span{padding:.15em .5em}}
+@media (max-width:760px){#tb span:nth-child(3){display:none}#ticks i{display:none}#ticks{padding:0}}
+#idx{position:absolute;inset:0;background:var(--paper);z-index:5;overflow:auto;padding:1.5em clamp(16px,3vw,3em)}
+#idx ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(16em,1fr));gap:.5em}
+#idx button{width:100%;text-align:left;font:inherit;color:var(--ink);background:var(--panel);border:1.5px solid var(--ink);padding:.5em .7em;cursor:pointer;border-radius:0;display:flex;gap:.7em}
+#idx button:hover{background:var(--ink);color:var(--paper)}
+.cover{display:grid;align-content:center;min-height:100%;grid-template-columns:minmax(0,1fr)}
+.cover h1{font-size:5.6em;max-width:9em}
+@media (max-width:820px){.cover h1{font-size:3.4em}}
+svg text{fill:var(--dim);font-family:var(--mono);font-size:11px}
+svg .ink{stroke:var(--ink);fill:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+
+<style>:root{color-scheme:light}[hidden]{display:none!important}body{margin:0}</style>
+</head>
+<body>
+<div id="app">
+ <div id="frame">
+  <div class="stage" id="stage"></div>
+  <div id="idx" hidden><div class="hd"><h2>Sheet index</h2></div><ol id="idxl"></ol></div>
+  <div id="foot">
+   <div id="nav"><button class="btn" id="prev" aria-label="Previous sheet">&larr;</button><button class="btn" id="next" aria-label="Next sheet">&rarr;</button><button class="btn" id="bidx" aria-label="Sheet index">Sheets</button><button class="btn" id="bth" aria-label="Switch light and dark">Light/Dark</button></div>
+   <div id="ticks"></div>
+   <div id="tb"><span>Sheet <b id="tbn">&nbsp;01/14</b></span><span id="tbt">Cover</span><span>Text search from scratch</span></div>
+  </div>
+ </div>
+</div>
+
+<script>
+// Search engine core. Same logic as the Colab notebook (tokenizer, TF-IDF, BM25, RRF, metrics).
+const STOP = new Set("a an and are as at be by for from in is it of on or that the this to with your you my i can up two one".split(" "));
+
+function stem(w) {
+  if (w.endsWith("ies") && w.length > 4) w = w.slice(0, -3) + "y";
+  else if (w.endsWith("ing") && w.length > 5) w = w.slice(0, -3);
+  else if (w.endsWith("s") && !w.endsWith("ss") && w.length > 3) w = w.slice(0, -1);
+  if (w.endsWith("e") && w.length > 4) w = w.slice(0, -1);
+  return w;
+}
+
+// Returns [{raw, tok, dropped}] so the UI can show what happened to every word.
+function analyze(text, o) {
+  const words = text.toLowerCase().match(/[a-zà-ÿ0-9]+/g) || [];
+  return words.map(raw => {
+    if (o.stop && STOP.has(raw)) return { raw, tok: null, dropped: true };
+    return { raw, tok: o.stem ? stem(raw) : raw, dropped: false };
+  });
+}
+function tokenize(text, o) {
+  return analyze(text, o).filter(x => !x.dropped).map(x => x.tok);
+}
+
+function buildEngine(docs, o) {
+  const texts = docs.map(d => d.title + ". " + d.text);
+  const toks = texts.map(t => tokenize(t, o));
+  const N = docs.length;
+  const df = new Map(), postings = new Map();
+  toks.forEach((t, i) => {
+    const c = new Map();
+    t.forEach(w => c.set(w, (c.get(w) || 0) + 1));
+    c.forEach((tf, w) => {
+      df.set(w, (df.get(w) || 0) + 1);
+      if (!postings.has(w)) postings.set(w, []);
+      postings.get(w).push([i, tf]);
+    });
+  });
+  const avgdl = toks.reduce((s, t) => s + t.length, 0) / N;
+  return { docs, o, texts, toks, N, df, postings, avgdl };
+}
+
+const counts = arr => { const c = new Map(); arr.forEach(w => c.set(w, (c.get(w) || 0) + 1)); return c; };
+const idfTfidf = (E, w) => Math.log((1 + E.N) / (1 + (E.df.get(w) || 0))) + 1;
+const idfBm25 = (E, w) => { const n = E.df.get(w) || 0; return Math.log(1 + (E.N - n + 0.5) / (n + 0.5)); };
+
+// TF-IDF with l2 normalisation and cosine, like scikit-learn's default.
+function tfidfVec(E, tokens) {
+  const c = counts(tokens.filter(w => E.df.has(w)));
+  const v = new Map(); let s = 0;
+  c.forEach((n, w) => { const x = n * idfTfidf(E, w); v.set(w, x); s += x * x; });
+  const norm = Math.sqrt(s) || 1;
+  v.forEach((x, w) => v.set(w, x / norm));
+  return v;
+}
+// Per-document, per-term contribution to the score (for the breakdown chart).
+function tfidfParts(E, q) {
+  const qv = tfidfVec(E, tokenize(q, E.o));
+  return E.toks.map(t => {
+    const dv = tfidfVec(E, t), parts = [];
+    qv.forEach((qw, w) => { if (dv.has(w)) parts.push({ w, s: qw * dv.get(w), tf: t.filter(x => x === w).length }); });
+    return parts;
+  });
+}
+function tfidfScores(E, q) { return tfidfParts(E, q).map(p => p.reduce((s, x) => s + x.s, 0)); }
+
+function bm25Parts(E, q, k1, b) {
+  const qt = [...new Set(tokenize(q, E.o))];
+  return E.toks.map(t => {
+    const c = counts(t), parts = [];
+    qt.forEach(w => {
+      if (!c.has(w)) return;
+      const f = c.get(w);
+      parts.push({ w, tf: f, s: idfBm25(E, w) * f * (k1 + 1) / (f + k1 * (1 - b + b * t.length / E.avgdl)) });
+    });
+    return parts;
+  });
+}
+function bm25Scores(E, q, k1, b) { return bm25Parts(E, q, k1, b).map(p => p.reduce((s, x) => s + x.s, 0)); }
+
+const order = sc => sc.map((_, i) => i).sort((a, b) => (sc[b] - sc[a]) || (a - b));
+function rrf(lists, k = 60) {
+  const out = new Array(lists[0].length).fill(0);
+  lists.forEach(sc => order(sc).forEach((i, r) => { out[i] += 1 / (k + r + 1); }));
+  return out;
+}
+function metrics(E, scores, rel) {
+  const ids = order(scores).map(i => E.docs[i].id), hits = ids.map(d => rel.includes(d));
+  const p3 = hits.slice(0, 3).filter(Boolean).length / 3;
+  const r5 = hits.slice(0, 5).filter(Boolean).length / rel.length;
+  let ap = 0, seen = 0;
+  hits.forEach((h, i) => { if (h) { seen++; ap += seen / (i + 1); } });
+  ap /= rel.length;
+  const dcg = hits.slice(0, 10).reduce((s, h, i) => s + (h ? 1 : 0) / Math.log2(i + 2), 0);
+  const idcg = Array.from({ length: Math.min(rel.length, 10) }, (_, i) => 1 / Math.log2(i + 2)).reduce((a, b) => a + b, 0);
+  return { P3: p3, R5: r5, AP: ap, nDCG10: dcg / idcg };
+}
+
+if (typeof module !== "undefined") module.exports = { STOP, stem, analyze, tokenize, buildEngine, tfidfScores, tfidfParts, bm25Scores, bm25Parts, order, rrf, metrics, idfBm25, idfTfidf };
+
+const DATA = {"docs": [{"id": "d01", "title": "Second-hand city bicycle, Gràcia", "text": "Dutch-style city bicycle with 7 gears, basket and mudguards. Perfect for getting to work every day.", "category": "bikes", "price": 90}, {"id": "d02", "title": "Folding bike, barely used", "text": "Folds in ten seconds and fits under your desk. Ideal for a commute by train and metro.", "category": "bikes", "price": 250}, {"id": "d03", "title": "Road bike Shimano 105, size M", "text": "Light aluminium frame, carbon fork, made for weekend training rides and races.", "category": "bikes", "price": 480}, {"id": "d04", "title": "Electric bike Xiaomi, 40 km range", "text": "Electric bicycle for the daily commute, charger included, battery replaced last year.", "category": "bikes", "price": 380}, {"id": "d05", "title": "Kids bike 16 inch, blue", "text": "Balance bike graduate model with stabilisers. For children from 4 to 6 years old.", "category": "bikes", "price": 35}, {"id": "d06", "title": "Bike helmet adult, size L", "text": "Bike helmet, hardly worn. Certified bike helmet with adjustable strap and bike light holder.", "category": "bikes", "price": 15}, {"id": "d07", "title": "Bicycle pump and repair kit", "text": "Floor pump with pressure gauge plus patches and tyre levers.", "category": "bikes", "price": 12}, {"id": "d08", "title": "Old commuter cycle, needs new tyres", "text": "Steel-frame cycle for getting around town. Cheap, sturdy and easy to repair.", "category": "bikes", "price": 40}, {"id": "d09", "title": "Mountain bike Orbea, full suspension", "text": "Trail bike, 29 inch wheels, hydraulic disc brakes, serviced in June.", "category": "bikes", "price": 900}, {"id": "d10", "title": "Electric scooter Xiaomi M365", "text": "Scooter with 30 km range, folds for the metro. Great for short trips across the city.", "category": "bikes", "price": 220}, {"id": "d11", "title": "Bike accessories bundle", "text": "Bike lock, bike light, bike bell, bike basket and bike bag. Cheap bike accessories for your bike, your commute and every bike ride. Everything a bike needs.", "category": "bikes", "price": 30}, {"id": "d12", "title": "Compact 2-seater couch, Poblenou", "text": "Grey fabric couch, perfect for a small apartment. Removable covers.", "category": "sofas", "price": 110}, {"id": "d13", "title": "Loveseat in green velvet", "text": "Small sofa for two people, fits studio flats and narrow living rooms.", "category": "sofas", "price": 140}, {"id": "d14", "title": "Corner sofa 5 seats, very large", "text": "Huge corner sofa. You need a big living room and two people to carry it.", "category": "sofas", "price": 300}, {"id": "d15", "title": "Sofa bed for tiny flats", "text": "Space-saving sofa bed, converts in seconds, ideal for a small flat or a guest room.", "category": "sofas", "price": 160}, {"id": "d16", "title": "Sofa cover, washable", "text": "Stretch sofa cover that protects your sofa from pets and stains. Fits 3-seater sofas.", "category": "sofas", "price": 20}, {"id": "d17", "title": "Vintage leather sofa 3-seater", "text": "Heavy three-seater sofa in brown leather, about 2 metres wide.", "category": "sofas", "price": 200}, {"id": "d18", "title": "Small settee, studio size", "text": "Two-seat settee with wooden legs. Compact size, easy to move up narrow stairs.", "category": "sofas", "price": 90}, {"id": "d19", "title": "MacBook Pro 2019, 16 GB RAM", "text": "Great for coding, Docker and Python. Keyboard replaced, new battery.", "category": "laptops", "price": 750}, {"id": "d20", "title": "ThinkPad T14 developer notebook", "text": "Linux installed, 32 GB memory, ideal for software development.", "category": "laptops", "price": 620}, {"id": "d21", "title": "Gaming laptop RTX 3060", "text": "Fast for games, and also good for programming and machine learning.", "category": "laptops", "price": 800}, {"id": "d22", "title": "Laptop bag 15 inch", "text": "Padded laptop bag with three pockets, water resistant, fits any 15 inch laptop.", "category": "laptops", "price": 18}, {"id": "d23", "title": "Chromebook 11 inch for school", "text": "Light Chromebook for kids, browser and homework only.", "category": "laptops", "price": 90}, {"id": "d24", "title": "Laptop stand, aluminium", "text": "Ergonomic stand for your laptop, adjustable height.", "category": "laptops", "price": 15}, {"id": "d25", "title": "Programming books bundle", "text": "Six books on Python, JavaScript and algorithms, good condition.", "category": "laptops", "price": 40}, {"id": "d26", "title": "Dell XPS 13, i7, 16 GB", "text": "Ultrabook for computer science students, compiles code quickly.", "category": "laptops", "price": 540}, {"id": "d27", "title": "Bugaboo Fox pushchair, from newborn", "text": "Comfortable pushchair with a lie-flat seat, rain cover and large basket.", "category": "baby & kids", "price": 350}, {"id": "d28", "title": "Foldable buggy, lightweight", "text": "Maclaren buggy, folds with one hand and fits in a plane cabin. Perfect for holidays.", "category": "baby & kids", "price": 60}, {"id": "d29", "title": "Pram with carrycot, vintage style", "text": "Classic pram for a newborn baby, carrycot and mattress included.", "category": "baby & kids", "price": 120}, {"id": "d30", "title": "Double stroller for twins", "text": "Side-by-side double stroller, sturdy and smooth. A baby stroller for two.", "category": "baby & kids", "price": 180}, {"id": "d31", "title": "Baby car seat Maxi-Cosi", "text": "Group 0+ car seat, safe up to 13 kg, used for one child only.", "category": "baby & kids", "price": 50}, {"id": "d32", "title": "Baby monitor with camera", "text": "Video baby monitor with night vision and two-way audio.", "category": "baby & kids", "price": 35}, {"id": "d33", "title": "Stroller rain cover, universal", "text": "Clear rain cover that fits most strollers. Keeps your stroller dry.", "category": "baby & kids", "price": 10}, {"id": "d34", "title": "Wooden baby crib", "text": "Convertible crib with mattress, three height levels.", "category": "baby & kids", "price": 85}, {"id": "d35", "title": "Kids scooter, three wheels", "text": "Three-wheel scooter for toddlers aged 2 to 5.", "category": "baby & kids", "price": 25}, {"id": "d36", "title": "Bike trailer for children", "text": "Trailer that carries two kids behind your bike, with a weather cover.", "category": "baby & kids", "price": 130}], "queries": {"q1": {"text": "cheap bike for commuting", "rel": ["d01", "d02", "d04", "d08"]}, "q2": {"text": "sofa for a small flat", "rel": ["d12", "d13", "d15", "d18"]}, "q3": {"text": "laptop for programming", "rel": ["d19", "d20", "d21", "d26"]}, "q4": {"text": "baby stroller", "rel": ["d27", "d28", "d29", "d30"]}}};
+</script>
+<script>
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const DOCS = DATA.docs, Q = DATA.queries, N = DOCS.length;
+const byId = Object.fromEntries(DOCS.map((d, i) => [d.id, { ...d, i }]));
+const cache = {}; const getE = o => cache[(+o.stop) + "" + (+o.stem)] || (cache[(+o.stop) + "" + (+o.stem)] = buildEngine(DOCS, o));
+const E0 = getE({ stop: true, stem: true });
+const WC = ["var(--w1)", "var(--w2)", "var(--w3)", "var(--w4)"];
+const sum = a => a.reduce((s, x) => s + x, 0);
+const rankAll = q => { const parts = tfidfParts(E0, q), sc = parts.map(p => sum(p.map(x => x.s))); return { parts, sc, ord: order(sc) }; };
+const relOf = q => { const t = q.trim().toLowerCase(); for (const k in Q) if (Q[k].text === t) return Q[k].rel; return null; };
+const fmtN = n => Math.round(n).toLocaleString("en-US");
+
+const S = []; // sheets: {title, html, init}
+const sheet = (title, html, init) => S.push({ title, html, init });
+const head = (tag, title, lead) => `<div class="hd"><div class="sn">${tag}</div><div><h2>${title}</h2>${lead ? `<p class="lead">${lead}</p>` : ""}</div></div>`;
+
+/* ---------- 1 cover ---------- */
+sheet("Cover", `<div class="cover">
+  <div class="tag">Text retrieval &middot; a search engine, step by step</div>
+  <h1>How a search engine reads text</h1>
+  <p class="lead" style="margin-top:1em">A customer types <span class="chip hi">cheap bike for commuting</span> into a marketplace with 36 listings. Which listing comes first, and why?</p>
+  <div class="scroll" style="margin-top:1.6em"><svg viewBox="0 0 720 96" width="100%" style="min-width:560px;max-width:900px" role="img" aria-label="Pipeline: raw text, tokens, inverted index, TF-IDF weights, ranked results.">
+    ${["Raw text", "1 Tokens", "2 Index", "3 TF-IDF", "Ranking"].map((t, i) => `<rect x="${4 + i * 144}" y="20" width="120" height="44" class="ink" stroke-width="1.6" ${i > 0 && i < 4 ? 'style="fill:var(--ink)"' : ""}/><text x="${64 + i * 144}" y="47" text-anchor="middle" style="font-size:13px;fill:${i > 0 && i < 4 ? "var(--paper)" : "var(--ink)"}">${t}</text>${i < 4 ? `<path d="M${126 + i * 144} 42h16m-5-4 5 4-5 4" class="ink" stroke-width="1.6"/>` : ""}`).join("")}
+    <path d="M148 84h420" class="ink" stroke-width="1.2"/><path d="M148 78v12M568 78v12" class="ink" stroke-width="1.2"/><text x="358" y="76" text-anchor="middle" style="fill:var(--signal);font-size:12px">THE THREE STEPS ON THESE SHEETS</text></svg></div></div>`);
+
+/* ---------- 2 text mining chain ---------- */
+const CHAIN = [
+ ["Business question", "Someone has a decision to make. The question fixes what counts as a useful result.", "Which complaints make guests leave a low score, and which hotels should fix them first?", "A question and a definition of success"],
+ ["Collect the text", "Export from a database, files, an API or a web page.", "Reviews arrive from the booking site as a CSV file.", "A table with a text column"],
+ ["Clean and prepare", "Remove duplicates and empty rows, pick the language, split into tokens.", "Drop reviews under 5 words. Keep English and Spanish apart.", "Tokens: one list per document"],
+ ["Analyse", "Search, keywords, topics, classification, sentiment.", "Find topics in negative reviews: noise, cleanliness, staff.", "Ranked lists, themes or labels"],
+ ["Check with people", "Read a sample, compare with human labels, measure the errors.", "Two people label 100 reviews. The model agrees on 8 out of 10.", "An error rate"],
+ ["Use and monitor", "Put the results in a dashboard or an app. Watch the quality over time.", "A weekly dashboard for hotel managers.", "A running system"]];
+sheet("What is text mining", head("OVERVIEW", "Text mining is a chain of steps", "Text mining turns text (emails, reviews, tickets, contracts) into something that can be counted, compared and decided on. Click each step.") +
+  `<div class="flow" id="chain">${CHAIN.map((c, i) => `<button class="step" data-i="${i}"><b>${i + 1}</b>${c[0]}</button>`).join("")}</div>
+  <div class="box" id="chain-d" style="margin-top:1.2em"></div>`,
+  root => { const show = i => { $$(".step", root).forEach((b, j) => b.classList.toggle("on", j === i)); const c = CHAIN[i]; $("#chain-d", root).innerHTML = `<div class="two"><div><span class="tag">What happens</span><p style="margin:.2em 0 .8em">${c[1]}</p><span class="tag">What comes out</span><p style="margin:.2em 0">${c[3]}</p></div><div><span class="tag">Example: hotel chain, 200,000 reviews</span><p style="margin:.2em 0;font-size:1.1em">${c[2]}</p></div></div>`; };
+    $("#chain", root).onclick = e => { const b = e.target.closest(".step"); if (b) show(+b.dataset.i); }; show(0); });
+
+/* ---------- 3 uses ---------- */
+const USES = [
+ ["Search and retrieval", "Find a product, a ticket or a policy from a few words.", "A ranked list of documents", "Marketplace: “cheap bike for commuting”. Support: “invoice charged twice”."],
+ ["Keywords and topics", "What are customers talking about in 50,000 reviews?", "Main themes and how big each one is", "Airline: baggage, delays and food are the three big themes this month."],
+ ["Classification and sentiment", "Send each support ticket to the right team. Measure brand mood.", "One label per text", "“I was charged twice” → Billing team, negative."],
+ ["Extraction", "Pull names, dates and amounts out of contracts and invoices.", "A table built from text", "Contract → start date, notice period, amount."],
+ ["Question answering", "An internal assistant that answers from company documents.", "A written answer", "It first searches for the right pages, then writes the answer from them."]];
+sheet("Where it is used", head("OVERVIEW", "What text mining is used for", "Five families of tasks.") +
+  `<div class="two wide"><div class="row" id="uses" style="flex-direction:column;align-items:stretch">${USES.map((u, i) => `<button class="tab" data-i="${i}" style="text-align:left">${u[0]}</button>`).join("")}</div><div class="box" id="uses-d"></div></div>`,
+  root => { const show = i => { $$(".tab", root).forEach((b, j) => b.classList.toggle("on", j === i)); const u = USES[i]; $("#uses-d", root).innerHTML = `<span class="tag">Business question</span><p style="margin:.2em 0 .7em">${u[1]}</p><span class="tag">Typical result</span><p style="margin:.2em 0 .7em">${u[2]}</p><span class="tag">Example</span><p style="margin:.2em 0">${u[3]}</p>`; };
+    $("#uses", root).onclick = e => { const b = e.target.closest(".tab"); if (b) show(+b.dataset.i); }; show(0); });
+
+/* ---------- 4 tools ---------- */
+const TOOLS = [
+ ["Prepare and explore text", "Python: pandas, NLTK, spaCy. SQL for the source data.", "Load tables, split text into tokens, count words."],
+ ["Search over many documents", "Elasticsearch, OpenSearch, Solr. Full-text search in PostgreSQL.", "Keep an inverted index and rank results, often with BM25."],
+ ["Weights, topics, classifiers", "scikit-learn, gensim, BERTopic.", "TF-IDF vectors, topic models, text classifiers."],
+ ["Meaning-based search", "Hugging Face models, sentence embeddings, vector databases (FAISS, pgvector), language-model APIs.", "Match by meaning instead of exact words."],
+ ["Ready-made cloud services", "Amazon Comprehend, Azure AI Language, Google Cloud Natural Language.", "Sentiment, entities and topics through an API."],
+ ["Analytics platforms", "SAS and similar.", "Analysis in one managed environment."]];
+sheet("Tools", head("OVERVIEW", "Tools used in practice", "The search engines on this list work on the ideas shown in the sheets that follow.") +
+  `<div class="scroll"><table id="tl"><tr><th>Need</th><th>Tools</th><th>What they do</th></tr>${TOOLS.map(t => `<tr><td><b>${t[0]}</b></td><td>${t[1]}</td><td>${t[2]}</td></tr>`).join("")}</table></div>`);
+
+/* ---------- 6 hook ---------- */
+sheet("Why search is hard", head("PROBLEM", "A simple text match: what does the customer get?", "The left column returns every listing that contains exactly the typed text. The right column ranks all listings by a score.") +
+  `<div class="row"><input type="text" id="hk-q" value="cheap bike for commuting" aria-label="Query">${Object.values(Q).map(q => `<button class="chipbtn" data-q="${esc(q.text)}">${esc(q.text)}</button>`).join("")}</div>
+  <div class="two" style="margin-top:1em"><div class="box"><span class="tag">Exact-text match</span><div id="hk-l"></div></div>
+  <div class="box"><span class="tag">Ranked search</span><div id="hk-r"><button class="btn" id="hk-show">Show ranked result</button></div></div></div>`,
+  root => { let shown = false; const q = () => $("#hk-q", root).value;
+    const draw = () => { const t = q().trim().toLowerCase(); const hits = t ? DOCS.filter(d => (d.title + ". " + d.text).toLowerCase().includes(t)) : [];
+      $("#hk-l", root).innerHTML = `<p class="big" style="margin:.1em 0">${hits.length}</p><p style="margin:.1em 0 .5em">${hits.length === 0 ? "listings contain exactly this text." : hits.length === 1 ? "listing contains this text." : "listings contain this text, all with the same rank."}</p><ul style="margin:0;padding-left:1.1em;font-size:.92em">${hits.slice(0, 8).map(d => `<li>${esc(d.title)}</li>`).join("")}${hits.length > 8 ? `<li>&hellip; and ${hits.length - 8} more</li>` : ""}</ul>`;
+      if (shown) { const r = rankAll(q()); $("#hk-r", root).innerHTML = `<p class="mono" style="margin:0 0 .4em">Every listing gets a score, best first</p>` + r.ord.slice(0, 6).map((i, k) => `<div class="brow" style="grid-template-columns:2em minmax(0,1fr) 3.6em;margin:.25em 0"><span class="mono">#${k + 1}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(DOCS[i].title)}</span><span class="val">${r.sc[i].toFixed(3)}</span></div>`).join("") + ``; } };
+    $("#hk-q", root).oninput = draw; root.addEventListener("click", e => { const b = e.target.closest("[data-q]"); if (b) { $("#hk-q", root).value = b.dataset.q; draw(); } if (e.target.id === "hk-show") { shown = true; draw(); } }); draw(); });
+
+/* ---------- 7 tokens ---------- */
+sheet("Tokens", head("STEP 1 OF 3", "Tokens: cut text into pieces a computer can compare", "Text is split into words, common words are dropped, and words are cut to a root. Switch the two cleaning steps on and off.") +
+  `<div class="row"><input type="text" id="tk-s" value="Cheap bikes for commuting to the office" aria-label="Sentence"><select id="tk-l" aria-label="Load a listing"><option value="">Load a listing&hellip;</option>${DOCS.map(d => `<option value="${d.id}">${d.id} ${esc(d.title)}</option>`).join("")}</select></div>
+  <div class="row" style="margin:.6em 0 .9em"><label class="ck"><input type="checkbox" id="tk-stop" checked> Remove stopwords</label><label class="ck"><input type="checkbox" id="tk-stem" checked> Stemming</label></div>
+  <div class="scroll box" id="tk-out"></div>
+  <p class="mono" id="tk-sum" style="margin:.7em 0 0"></p>
+  <div class="two" style="margin-top:1em"><div class="box"><span class="tag">Our tiny stemmer vs a professional one</span><div class="scroll"><table><tr><th>Word</th><th>Ours</th><th>Snowball</th></tr>${[["commuting", "commut", "commut"], ["bicycles", "bicycl", "bicycl"], ["couches", "couch", "couch"], ["programming", "programm", "program"], ["pushchair", "pushchair", "pushchair"]].map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td${r[1] !== r[2] ? ' style="color:var(--signal)"' : ""}>${r[2]}</td></tr>`).join("")}</table></div></div>
+  <div class="box"><span class="tag">How stemming works</span><p style="margin:.2em 0">A stem is not always a real word. It only has to be the same for every form of the word, so <i>bike</i> and <i>bikes</i> end up in the same index entry. The simple stemmer here cuts endings by rules; a professional one uses more rules and makes fewer mistakes.</p></div></div>`,
+  root => { const draw = () => { const text = $("#tk-s", root).value, so = $("#tk-stop", root).checked, sm = $("#tk-stem", root).checked;
+      const words = (text.toLowerCase().match(/[a-zà-ÿ0-9]+/g) || []).slice(0, 40); const kept = [];
+      const r1 = words.map(w => `<span class="chip">${esc(w)}</span>`);
+      const r2 = words.map(w => so && STOP.has(w) ? `<span class="chip drop">${esc(w)}</span>` : `<span class="chip">${esc(w)}</span>`);
+      const r3 = words.map(w => { if (so && STOP.has(w)) return `<span class="chip void">&nbsp;</span>`; const t = sm ? stem(w) : w; kept.push(t); return `<span class="chip${t !== w ? " chg" : ""}">${esc(t)}</span>`; });
+      const row = (l, c) => `<div class="tokrow" style="min-width:max-content"><span class="tag">${l}</span>${c.join("")}</div>`;
+      $("#tk-out", root).innerHTML = row("1 split", r1) + row("2 stopwords", r2) + row("3 stem", r3);
+      $("#tk-sum", root).textContent = `${words.length} words in → ${kept.length} tokens out: ${kept.join(" · ") || "(none)"}`; };
+    root.addEventListener("input", e => { if (e.target.id === "tk-l" && e.target.value) $("#tk-s", root).value = byId[e.target.value].title + ". " + byId[e.target.value].text; draw(); }); draw(); });
+
+/* ---------- 8 vocabulary ---------- */
+sheet("Vocabulary", head("STEP 1 OF 3", "What cleaning does to the whole catalogue", "Computed live from the 36 listings. The most frequent tokens are the catalogue&rsquo;s own words, so they do not separate one listing from another. Click a bar to see which listings contain the token.") +
+  `<div class="two"><div class="box"><span class="tag">Distinct words (vocabulary)</span><div class="bars" id="vc-f"></div><p id="vc-once" style="margin:.8em 0 0"></p></div>
+  <div class="box"><span class="tag">Most frequent tokens</span><div class="bars" id="vc-t"></div><p id="vc-d" class="mono" style="margin:.6em 0 0;text-transform:none">&nbsp;</p></div></div>
+  `,
+  root => { const cfg = [["raw words", { stop: false, stem: false }], ["no stopwords", { stop: true, stem: false }], ["stemmed", { stop: true, stem: true }]];
+    const info = cfg.map(([l, o]) => { const e = getE(o); return [l, e.df.size, sum(e.toks.map(t => t.length))]; });
+    $("#vc-f", root).innerHTML = info.map(x => `<div class="brow"><span class="lab">${x[0]}</span><div class="track"><div class="fill" style="width:${x[1] / info[0][1] * 100}%"></div></div><span class="val">${x[1]}</span></div>`).join("") + `<p class="mono" style="margin:.5em 0 0;text-transform:none">word occurrences: ${info.map(x => x[2]).join(" → ")}</p>`;
+    const tot = new Map(); E0.toks.forEach(t => t.forEach(w => tot.set(w, (tot.get(w) || 0) + 1)));
+    const once = [...tot.values()].filter(v => v === 1).length, df1 = [...E0.df.values()].filter(v => v === 1).length;
+    $("#vc-once", root).innerHTML = `<b>${once}</b> of ${tot.size} tokens appear only once in the whole catalogue. <b>${df1}</b> appear in a single listing.`;
+    const top = [...tot.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 12), mx = top[0][1];
+    $("#vc-t", root).innerHTML = top.map(([w, c]) => `<div class="brow" data-w="${w}" style="cursor:pointer"><span class="lab">${w}</span><div class="track"><div class="fill" style="width:${c / mx * 100}%"></div></div><span class="val">${c}</span></div>`).join("");
+    $("#vc-t", root).onclick = e => { const r = e.target.closest("[data-w]"); if (!r) return; const w = r.dataset.w, ids = E0.postings.get(w).map(p => DOCS[p[0]].id); $("#vc-d", root).textContent = `"${w}" appears in ${ids.length} listings: ${ids.join(", ")}`; }; });
+
+/* ---------- 9 index ---------- */
+sheet("Inverted index", head("STEP 2 OF 3", "The inverted index: word → list of documents", "Like the index at the back of a book: for each token, the listings that contain it. Numbers in brackets show how many times the word appears in that listing.") +
+  `<div class="row"><input type="text" id="ix-q" value="cheap bike for commuting" aria-label="Query">${Object.values(Q).map(q => `<button class="chipbtn" data-q="${esc(q.text)}">${esc(q.text)}</button>`).join("")}</div><div class="row" style="margin-top:.5em"><label class="ck"><input type="radio" name="ix-m" value="and" checked> AND: every word must match</label><label class="ck"><input type="radio" name="ix-m" value="or"> OR: any word</label></div>
+  <div class="two wide" style="margin-top:1em"><div class="box"><span class="tag">Postings lists</span><div id="ix-p" style="display:grid;gap:.6em"></div>
+   <div id="ix-r" style="margin-top:.5em"></div></div>
+  <div class="box"><span class="tag">Why engines use an index</span><p style="margin:.2em 0 .6em">Catalogue size: <b id="ix-n"></b> documents</p><input type="range" id="ix-s" min="1.5" max="8" step="0.1" value="6" aria-label="Catalogue size"><div class="bars" id="ix-b" style="margin-top:.8em"></div><p id="ix-t" style="margin:.7em 0 0;font-size:.92em"></p></div></div>`,
+  root => { const draw = () => { const q = $("#ix-q", root).value, toks = [...new Set(tokenize(q, E0.o))], mode = $("input[name=ix-m]:checked", root).value;
+      $("#ix-p", root).innerHTML = toks.length ? toks.map(w => { const p = E0.postings.get(w) || []; const mx = Math.max(0, ...p.map(x => x[1])); return `<div><span class="chip on">${esc(w)}</span> <span class="mono">df ${p.length}</span><div class="postings" style="margin-top:.3em">${p.length ? p.map(([i, tf]) => `<span class="pc">${DOCS[i].id} <b>(${tf})</b></span>`).join("") : '<span class="mono">not in the index</span>'}</div></div>`; }).join("") : `<span class="mono">Type a query</span>`;
+      const sets = toks.map(w => new Set((E0.postings.get(w) || []).map(p => p[0]))); let res = [];
+      if (sets.length) res = mode === "and" ? [...sets.reduce((a, b) => new Set([...a].filter(x => b.has(x))))] : [...new Set(sets.flatMap(s => [...s]))];
+      res.sort((a, b) => a - b);
+      $("#ix-r", root).innerHTML = `<p style="margin:.2em 0"><b>${res.length}</b> listing${res.length === 1 ? "" : "s"} &middot; in no useful order</p><ul style="margin:0;padding-left:1.1em;font-size:.9em">${res.slice(0, 6).map(i => `<li>${DOCS[i].id} ${esc(DOCS[i].title)}</li>`).join("")}${res.length > 6 ? `<li>&hellip;</li>` : ""}</ul>`;
+      const size = Math.round(10 ** +$("#ix-s", root).value); $("#ix-n", root).textContent = fmtN(size);
+      const dfs = toks.map(w => (E0.postings.get(w) || []).length).filter(x => x > 0), m = dfs.length ? Math.min(...dfs) : 0, reads = Math.max(1, Math.round(m / N * size)), lg = x => Math.log10(Math.max(1, x)) / 8.2 * 100;
+      $("#ix-b", root).innerHTML = `<div class="brow" style="grid-template-columns:5.5em minmax(0,1fr) 6.5em"><span class="lab">scan all</span><div class="track"><div class="fill" style="width:${lg(size)}%"></div></div><span class="val">${fmtN(size)}</span></div><div class="brow" style="grid-template-columns:5.5em minmax(0,1fr) 6.5em"><span class="lab">use index</span><div class="track"><div class="fill" style="width:${lg(reads)}%;background:var(--signal)"></div></div><span class="val">${fmtN(reads)}</span></div><p class="mono" style="margin:0;text-transform:none">documents checked (log scale)</p>`;
+      $("#ix-t", root).textContent = m ? `The engine starts from the shortest list (${m} of ${N} listings, ${(m / N * 100).toFixed(0)}%). The rarer the word, the bigger the saving.` : "None of the words is in the index."; };
+    root.addEventListener("input", draw); root.addEventListener("click", e => { const b = e.target.closest("[data-q]"); if (b) { $("#ix-q", root).value = b.dataset.q; draw(); } }); draw(); });
+
+/* ---------- 10 IDF ---------- */
+sheet("TF and IDF", head("STEP 3 OF 3", "TF-IDF: how much is a word worth?", "TF: how often the word appears in this listing. IDF: how rare the word is in the catalogue. Weight = TF × IDF.") +
+  `<div class="two"><div class="box"><span class="tag">IDF of one word</span><div class="row"><input type="text" id="id-w" value="bike" aria-label="Word" style="width:10em">${["cheap", "commuting", "bike", "sofa", "the"].map(w => `<button class="chipbtn" data-w="${w}">${w}</button>`).join("")}</div>
+   <p id="id-t" style="margin:.7em 0 .3em"></p><div class="scroll"><svg id="id-svg" viewBox="0 0 380 210" width="100%" style="min-width:300px" role="img" aria-label="IDF falls as more listings contain the word"></svg></div><p class="mono" style="margin:0;text-transform:none" id="id-h"></p></div>
+  <div class="box"><span class="tag">One listing, by hand</span><div class="row"><select id="id-d" aria-label="Listing">${DOCS.map(d => `<option value="${d.id}"${d.id === "d02" ? " selected" : ""}>${d.id} ${esc(d.title)}</option>`).join("")}</select><select id="id-q" aria-label="Query">${Object.values(Q).map(q => `<option>${esc(q.text)}</option>`).join("")}</select></div>
+   <div class="scroll" style="margin-top:.7em"><table id="id-tab"></table></div><p class="note" id="id-n"></p></div></div>`,
+  root => { const idf = w => idfTfidf(E0, w); const draw = () => { const raw = $("#id-w", root).value.trim().toLowerCase(), w = raw.match(/[a-zà-ÿ0-9]+/) ? raw.match(/[a-zà-ÿ0-9]+/)[0] : "";
+      const t = w ? (STOP.has(w) ? null : stem(w)) : ""; const df = t ? (E0.df.get(t) || 0) : 0;
+      $("#id-t", root).innerHTML = !w ? "Type a word." : t === null ? `<b>${esc(w)}</b> is a stopword. It is removed before this step.` : df === 0 ? `<b>${esc(t)}</b> is in no listing, so it cannot match anything.` : `<b>${esc(t)}</b> is in <b>${df}</b> of ${N} listings. IDF = ln((1 + ${N}) / (1 + ${df})) + 1 = <b>${idf(t).toFixed(2)}</b>`;
+      const X = d => 40 + (d - 1) / (N - 1) * 320, Y = v => 180 - (v - 1) / 3.7 * 160; let path = ""; for (let d = 1; d <= N; d++) path += (d === 1 ? "M" : "L") + X(d).toFixed(1) + " " + Y(Math.log((1 + N) / (1 + d)) + 1).toFixed(1);
+      const hist = {}; E0.df.forEach(v => hist[v] = (hist[v] || 0) + 1);
+      $("#id-svg", root).innerHTML = `<path d="M40 180H360M40 20V180" class="ink" stroke-width="1.2"/>${[1, 2, 3, 4].map(v => `<path d="M40 ${Y(v)}h-4" class="ink"/><text x="32" y="${Y(v) + 4}" text-anchor="end">${v}</text>`).join("")}${[1, 10, 20, 30, 36].map(d => `<path d="M${X(d)} 180v4" class="ink"/><text x="${X(d)}" y="196" text-anchor="middle">${d}</text>`).join("")}<path d="${path}" class="ink" stroke-width="2.2" style="stroke:var(--ink)"/>${t && df ? `<circle cx="${X(df)}" cy="${Y(idf(t))}" r="6" style="fill:var(--signal);stroke:var(--paper);stroke-width:2"/><path d="M${X(df)} ${Y(idf(t))}V180M40 ${Y(idf(t))}H${X(df)}" style="stroke:var(--signal);stroke-dasharray:3 3;fill:none"/>` : ""}<text x="200" y="208" text-anchor="middle">listings that contain the word (df)</text><text x="6" y="14">IDF</text>`;
+      $("#id-h", root).textContent = `Catalogue: ${hist[1]} tokens are in one listing only; ${hist[2] || 0} in two; ${hist[3] || 0} in three.`;
+      const d = byId[$("#id-d", root).value], qt = [...new Set(tokenize($("#id-q", root).value, E0.o))], toks = E0.toks[d.i], c = {}; toks.forEach(x => c[x] = (c[x] || 0) + 1);
+      const rows = qt.map(x => [x, c[x] || 0, idf(x), (c[x] || 0) * idf(x)]);
+      $("#id-tab", root).innerHTML = `<tr><th>Query token</th><th>TF</th><th>IDF</th><th>TF × IDF</th></tr>${rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2].toFixed(2)}</td><td>${r[3].toFixed(2)}</td></tr>`).join("")}`;
+      $("#id-n", root).textContent = rows.every(r => r[1] === 0) ? "This listing contains none of the query words. Its score is 0." : `Rare words that the listing contains add the most. Each listing&rsquo;s weights are then scaled to length 1, so long texts do not win only by length.`; };
+    root.addEventListener("input", draw); root.addEventListener("click", e => { const b = e.target.closest("[data-w]"); if (b) { $("#id-w", root).value = b.dataset.w; draw(); } }); draw(); });
+
+/* ---------- 11 ranking ---------- */
+sheet("Ranking", head("STEP 3 OF 3", "TF-IDF ranking: where does each score come from?", "Each bar is split by query word. Click a row to read the listing.") +
+  `<div class="row"><input type="text" id="rk-q" value="cheap bike for commuting" aria-label="Query">${Object.values(Q).map(q => `<button class="chipbtn" data-q="${esc(q.text)}">${esc(q.text)}</button>`).join("")}</div>
+  <div class="row" style="margin:.5em 0"><label class="ck"><input type="checkbox" id="rk-rel" checked> Mark listings a person judged relevant</label><span id="rk-leg" class="row"></span></div>
+  <div class="two wide"><div class="box" style="padding:.3em .6em" id="rk-l"></div><div><div class="box" id="rk-d"></div><p class="note" id="rk-n"></p></div></div>`,
+  root => { let sel = 0; const draw = () => { const q = $("#rk-q", root).value, r = rankAll(q), toks = [...new Set(tokenize(q, E0.o))], rel = $("#rk-rel", root).checked ? relOf(q) : null, top = r.ord.slice(0, 8), mx = r.sc[top[0]] || 1;
+      $("#rk-leg", root).innerHTML = toks.map((w, i) => `<span class="mono" style="display:inline-flex;align-items:center;gap:.35em"><i style="display:inline-block;width:.9em;height:.9em;background:${WC[i % 4]}"></i>${esc(w)}</span>`).join("");
+      $("#rk-l", root).innerHTML = top.map((i, k) => { const p = r.parts[i]; return `<div class="rk${k === sel ? " sel" : ""}" data-k="${k}"><span class="mono">#${k + 1}</span><span class="mono">${DOCS[i].id}</span><span class="t">${esc(DOCS[i].title)}</span><div class="stk" style="height:1em"><div class="stack" style="width:${r.sc[i] / mx * 100}%">${toks.map((w, j) => { const s = (p.find(x => x.w === w) || { s: 0 }).s; return s ? `<i style="width:${s / r.sc[i] * 100}%;background:${WC[j % 4]}" title="${esc(w)}"></i>` : ""; }).join("")}</div></div><span class="sc">${r.sc[i].toFixed(3)}</span><span>${rel && rel.includes(DOCS[i].id) ? '<span class="ok" title="judged relevant">✓</span>' : ""}</span></div>`; }).join("");
+      const i = top[sel], p = r.parts[i].slice().sort((a, b) => b.s - a.s);
+      $("#rk-d", root).innerHTML = r.sc[i] ? `<span class="tag">#${sel + 1} &middot; ${DOCS[i].id} &middot; ${DOCS[i].category} &middot; ${DOCS[i].price} EUR</span><p style="margin:.3em 0 .1em"><b>${esc(DOCS[i].title)}</b></p><p style="margin:0;font-size:.92em">${esc(DOCS[i].text)}</p>` : `<span class="mono">No listing contains these words.</span>`;
+      let msg = ""; if (r.sc[top[0]] > 0) { const t = r.parts[top[0]].slice().sort((a, b) => b.s - a.s)[0], pct = Math.round(t.s / r.sc[top[0]] * 100); msg = `#1 is &ldquo;${esc(DOCS[top[0]].title)}&rdquo;. ${pct}% of its score comes from &ldquo;${esc(t.w)}&rdquo;, which appears ${t.tf} time${t.tf === 1 ? "" : "s"} in that listing.`; const R = relOf(q); if (R && !R.includes(DOCS[top[0]].id)) msg += ` It is not among the listings a person judged relevant.`; }
+      $("#rk-n", root).innerHTML = msg; };
+    root.addEventListener("input", () => { sel = 0; draw(); }); root.addEventListener("click", e => { const b = e.target.closest("[data-q]"); if (b) { $("#rk-q", root).value = b.dataset.q; sel = 0; draw(); return; } const r = e.target.closest(".rk"); if (r) { sel = +r.dataset.k; draw(); } }); draw(); });
+
+/* ---------- 12 four queries ---------- */
+sheet("Four queries", head("RESULT", "Where the relevant listings end up", "Four test queries. For each one, a person marked four listings as relevant. Their rank in the TF-IDF ranking, and the query words they contain:") +
+  `<div class="row" id="fq-b">${Object.entries(Q).map(([k, q], i) => `<button class="tab${i ? "" : " on"}" data-k="${k}">${esc(q.text)}</button>`).join("")}</div>
+  <div class="box" style="margin-top:.9em"><div class="scroll"><table id="fq-t"></table></div><p id="fq-s" class="big" style="margin:.5em 0 0;font-size:1.7em"></p></div><p class="note" id="fq-n"></p>`,
+  root => { const draw = k => { $$(".tab", root).forEach(b => b.classList.toggle("on", b.dataset.k === k)); const q = Q[k], r = rankAll(q.text), toks = [...new Set(tokenize(q.text, E0.o))], pos = new Map(r.ord.map((i, p) => [i, p + 1]));
+      const rows = q.rel.map(id => { const i = byId[id].i, has = toks.filter(w => E0.df.has(w) && E0.toks[i].includes(w)); return { id, t: DOCS[i].title, p: pos.get(i), sc: r.sc[i], has }; });
+      $("#fq-t", root).innerHTML = `<tr><th>Relevant listing</th><th>Rank of 36</th><th>Score</th><th>Query words it contains</th></tr>` + rows.map(x => `<tr><td>${x.id} ${esc(x.t)}</td><td>${x.sc ? "#" + x.p : "not returned"}</td><td>${x.sc.toFixed(3)}</td><td>${toks.map(w => `<span class="chip${x.has.includes(w) ? " on" : " drop"}">${esc(w)}</span>`).join(" ")}</td></tr>`).join("");
+      const found = rows.filter(x => x.sc && x.p <= 4).length; $("#fq-s", root).textContent = `${found} of 4 in the top 4`;
+      const none = rows.filter(x => x.has.length === 0).map(x => x.id);
+      $("#fq-n", root).innerHTML = none.length ? `<b>${none.join(", ")}</b> ${none.length === 1 ? "shares" : "share"} no word with the query. ${none.length === 1 ? "It uses" : "They use"} other words (couch, pushchair, notebook, cycle). Keyword matching cannot know these mean the same. This is called the vocabulary mismatch problem.` : `Every relevant listing shares at least one word with the query, but words repeated in other listings can still push them down.`; };
+    $("#fq-b", root).onclick = e => { const b = e.target.closest("[data-k]"); if (b) draw(b.dataset.k); }; draw("q1"); });
+
+/* ---------- shell ---------- */
+const stage = $("#stage"), ticks = $("#ticks"); let cur = -1; const seen = new Set();
+S.forEach((s, i) => { const el = document.createElement("section"); el.className = "sheet"; el.setAttribute("aria-label", s.title); el.innerHTML = s.html; stage.appendChild(el); s.el = el; ticks.insertAdjacentHTML("beforeend", `<i data-i="${i}" title="${esc(s.title)}"></i>`); });
+$("#idxl").innerHTML = S.map((s, i) => `<li><button data-i="${i}"><span class="mono">${String(i + 1).padStart(2, "0")}</span>${esc(s.title)}</button></li>`).join("");
+$("#tbn").textContent = " 01/" + S.length;
+function go(i) { i = Math.max(0, Math.min(S.length - 1, i)); if (i === cur) return; if (cur >= 0) S[cur].el.classList.remove("on"); cur = i; const s = S[i]; s.el.classList.add("on"); s.el.scrollTop = 0; if (!s.done && s.init) { s.done = 1; s.init(s.el); } seen.add(i);
+  $("#tbn").textContent = " " + String(i + 1).padStart(2, "0") + "/" + S.length; $("#tbt").textContent = s.title; $$("#ticks i").forEach((t, j) => { t.classList.toggle("on", j === i); t.classList.toggle("seen", seen.has(j) && j !== i); }); $("#idx").hidden = true;
+  try { history.replaceState(null, "", "#s" + (i + 1)); } catch (e) {} }
+S.forEach((s, i) => { s.init = s.init || null; }); 
+$("#prev").onclick = () => go(cur - 1); $("#next").onclick = () => go(cur + 1); $("#bidx").onclick = () => { $("#idx").hidden = !$("#idx").hidden; };
+$("#bth").onclick = () => { const r = document.documentElement, dark = r.dataset.theme ? r.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; r.dataset.theme = dark ? "light" : "dark"; };
+$("#ticks").onclick = e => { const t = e.target.closest("i"); if (t) go(+t.dataset.i); }; $("#idxl").onclick = e => { const b = e.target.closest("button"); if (b) go(+b.dataset.i); };
+addEventListener("keydown", e => { const tg = e.target; if (tg.tagName === "SELECT" || tg.tagName === "TEXTAREA" || (tg.tagName === "INPUT" && tg.type !== "checkbox")) return; const k = e.key;
+  if (k === "ArrowRight" || k === "PageDown" || k === " ") { e.preventDefault(); go(cur + 1); } else if (k === "ArrowLeft" || k === "PageUp") { e.preventDefault(); go(cur - 1); } else if (k === "Home") go(0); else if (k === "End") go(S.length - 1);
+  else if (k === "f" || k === "F") { try { document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen().catch(() => {}); } catch (x) {} } else if (k === "g" || k === "G") $("#bidx").click(); });
+const h = parseInt((location.hash.match(/^#s(\d+)$/) || [])[1]); go(h > 0 && h <= S.length ? h - 1 : 0);
+</script>
+
+</body>
+</html>
