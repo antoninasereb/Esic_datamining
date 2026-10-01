@@ -1,9 +1,4 @@
-<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Search Sheets</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Text Sheets</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=DM+Mono:wght@400;500&family=Public+Sans:wght@400;500;700&display=swap">
 <style>
@@ -123,12 +118,20 @@ pre{margin:0;font-family:var(--mono);font-size:.82em;line-height:1.55;white-spac
 svg text{fill:var(--dim);font-family:var(--mono);font-size:11px}
 svg .ink{stroke:var(--ink);fill:none}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
-</style>
 
+.rl{display:grid;grid-template-columns:2.2em 2.8em minmax(0,1fr) 3.6em 1.6em;gap:.5em;align-items:center;padding:.3em .4em;border-bottom:1px solid var(--line);font-size:.92em}
+.rl.yes{background:var(--grid)}
+.rl .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rl .sc{font-family:var(--mono);text-align:right}
+.rl.h{grid-template-columns:2.2em 2.8em minmax(0,1fr) 3.4em 1.6em}
+.strip{display:flex;gap:0;min-width:max-content}
+.strip .cell{width:3.6em;border:1.5px solid var(--ink);margin-right:-1.5px;padding:.3em .3em .4em;text-align:center;font-family:var(--mono);font-size:.82em;background:var(--panel)}
+.strip .cell b{display:block;font-weight:500;color:var(--dim);font-size:.85em}
+.strip .cell.y{background:var(--signal);color:var(--paper);border-color:var(--signal)} .strip .cell.y b{color:var(--paper)}
+td.best{background:var(--ink);color:var(--paper);font-weight:700}
+@media (max-width:620px){.rl,.rl.h{grid-template-columns:2em 2.6em minmax(0,1fr) 3em 1.4em}}
+</style><style>:root{color-scheme:light}[hidden]{display:none!important}body{margin:0}</style></head><body>
 
-<style>:root{color-scheme:light}[hidden]{display:none!important}body{margin:0}</style>
-</head>
-<body>
 <div id="app">
  <div id="frame">
   <div class="stage" id="stage"></div>
@@ -136,282 +139,99 @@ svg .ink{stroke:var(--ink);fill:none}
   <div id="foot">
    <div id="nav"><button class="btn" id="prev" aria-label="Previous sheet">&larr;</button><button class="btn" id="next" aria-label="Next sheet">&rarr;</button><button class="btn" id="bidx" aria-label="Sheet index">Sheets</button><button class="btn" id="bth" aria-label="Switch light and dark">Light/Dark</button></div>
    <div id="ticks"></div>
-   <div id="tb"><span>Sheet <b id="tbn">&nbsp;01/14</b></span><span id="tbt">Cover</span><span>Text search from scratch</span></div>
+   <div id="tb"><span>Sheet <b id="tbn">&nbsp;01/07</b></span><span id="tbt">Cover</span><span>Text mining for business</span></div>
   </div>
  </div>
 </div>
 
 <script>
-// Search engine core. Same logic as the Colab notebook (tokenizer, TF-IDF, BM25, RRF, metrics).
-const STOP = new Set("a an and are as at be by for from in is it of on or that the this to with your you my i can up two one".split(" "));
-
-function stem(w) {
-  if (w.endsWith("ies") && w.length > 4) w = w.slice(0, -3) + "y";
-  else if (w.endsWith("ing") && w.length > 5) w = w.slice(0, -3);
-  else if (w.endsWith("s") && !w.endsWith("ss") && w.length > 3) w = w.slice(0, -1);
-  if (w.endsWith("e") && w.length > 4) w = w.slice(0, -1);
-  return w;
-}
-
-// Returns [{raw, tok, dropped}] so the UI can show what happened to every word.
-function analyze(text, o) {
-  const words = text.toLowerCase().match(/[a-zà-ÿ0-9]+/g) || [];
-  return words.map(raw => {
-    if (o.stop && STOP.has(raw)) return { raw, tok: null, dropped: true };
-    return { raw, tok: o.stem ? stem(raw) : raw, dropped: false };
-  });
-}
-function tokenize(text, o) {
-  return analyze(text, o).filter(x => !x.dropped).map(x => x.tok);
-}
-
-function buildEngine(docs, o) {
-  const texts = docs.map(d => d.title + ". " + d.text);
-  const toks = texts.map(t => tokenize(t, o));
-  const N = docs.length;
-  const df = new Map(), postings = new Map();
-  toks.forEach((t, i) => {
-    const c = new Map();
-    t.forEach(w => c.set(w, (c.get(w) || 0) + 1));
-    c.forEach((tf, w) => {
-      df.set(w, (df.get(w) || 0) + 1);
-      if (!postings.has(w)) postings.set(w, []);
-      postings.get(w).push([i, tf]);
-    });
-  });
-  const avgdl = toks.reduce((s, t) => s + t.length, 0) / N;
-  return { docs, o, texts, toks, N, df, postings, avgdl };
-}
-
-const counts = arr => { const c = new Map(); arr.forEach(w => c.set(w, (c.get(w) || 0) + 1)); return c; };
-const idfTfidf = (E, w) => Math.log((1 + E.N) / (1 + (E.df.get(w) || 0))) + 1;
-const idfBm25 = (E, w) => { const n = E.df.get(w) || 0; return Math.log(1 + (E.N - n + 0.5) / (n + 0.5)); };
-
-// TF-IDF with l2 normalisation and cosine, like scikit-learn's default.
-function tfidfVec(E, tokens) {
-  const c = counts(tokens.filter(w => E.df.has(w)));
-  const v = new Map(); let s = 0;
-  c.forEach((n, w) => { const x = n * idfTfidf(E, w); v.set(w, x); s += x * x; });
-  const norm = Math.sqrt(s) || 1;
-  v.forEach((x, w) => v.set(w, x / norm));
-  return v;
-}
-// Per-document, per-term contribution to the score (for the breakdown chart).
-function tfidfParts(E, q) {
-  const qv = tfidfVec(E, tokenize(q, E.o));
-  return E.toks.map(t => {
-    const dv = tfidfVec(E, t), parts = [];
-    qv.forEach((qw, w) => { if (dv.has(w)) parts.push({ w, s: qw * dv.get(w), tf: t.filter(x => x === w).length }); });
-    return parts;
-  });
-}
-function tfidfScores(E, q) { return tfidfParts(E, q).map(p => p.reduce((s, x) => s + x.s, 0)); }
-
-function bm25Parts(E, q, k1, b) {
-  const qt = [...new Set(tokenize(q, E.o))];
-  return E.toks.map(t => {
-    const c = counts(t), parts = [];
-    qt.forEach(w => {
-      if (!c.has(w)) return;
-      const f = c.get(w);
-      parts.push({ w, tf: f, s: idfBm25(E, w) * f * (k1 + 1) / (f + k1 * (1 - b + b * t.length / E.avgdl)) });
-    });
-    return parts;
-  });
-}
-function bm25Scores(E, q, k1, b) { return bm25Parts(E, q, k1, b).map(p => p.reduce((s, x) => s + x.s, 0)); }
-
-const order = sc => sc.map((_, i) => i).sort((a, b) => (sc[b] - sc[a]) || (a - b));
-function rrf(lists, k = 60) {
-  const out = new Array(lists[0].length).fill(0);
-  lists.forEach(sc => order(sc).forEach((i, r) => { out[i] += 1 / (k + r + 1); }));
-  return out;
-}
-function metrics(E, scores, rel) {
-  const ids = order(scores).map(i => E.docs[i].id), hits = ids.map(d => rel.includes(d));
-  const p3 = hits.slice(0, 3).filter(Boolean).length / 3;
-  const r5 = hits.slice(0, 5).filter(Boolean).length / rel.length;
-  let ap = 0, seen = 0;
-  hits.forEach((h, i) => { if (h) { seen++; ap += seen / (i + 1); } });
-  ap /= rel.length;
-  const dcg = hits.slice(0, 10).reduce((s, h, i) => s + (h ? 1 : 0) / Math.log2(i + 2), 0);
-  const idcg = Array.from({ length: Math.min(rel.length, 10) }, (_, i) => 1 / Math.log2(i + 2)).reduce((a, b) => a + b, 0);
-  return { P3: p3, R5: r5, AP: ap, nDCG10: dcg / idcg };
-}
-
-if (typeof module !== "undefined") module.exports = { STOP, stem, analyze, tokenize, buildEngine, tfidfScores, tfidfParts, bm25Scores, bm25Parts, order, rrf, metrics, idfBm25, idfTfidf };
-
-const DATA = {"docs": [{"id": "d01", "title": "Second-hand city bicycle, Gràcia", "text": "Dutch-style city bicycle with 7 gears, basket and mudguards. Perfect for getting to work every day.", "category": "bikes", "price": 90}, {"id": "d02", "title": "Folding bike, barely used", "text": "Folds in ten seconds and fits under your desk. Ideal for a commute by train and metro.", "category": "bikes", "price": 250}, {"id": "d03", "title": "Road bike Shimano 105, size M", "text": "Light aluminium frame, carbon fork, made for weekend training rides and races.", "category": "bikes", "price": 480}, {"id": "d04", "title": "Electric bike Xiaomi, 40 km range", "text": "Electric bicycle for the daily commute, charger included, battery replaced last year.", "category": "bikes", "price": 380}, {"id": "d05", "title": "Kids bike 16 inch, blue", "text": "Balance bike graduate model with stabilisers. For children from 4 to 6 years old.", "category": "bikes", "price": 35}, {"id": "d06", "title": "Bike helmet adult, size L", "text": "Bike helmet, hardly worn. Certified bike helmet with adjustable strap and bike light holder.", "category": "bikes", "price": 15}, {"id": "d07", "title": "Bicycle pump and repair kit", "text": "Floor pump with pressure gauge plus patches and tyre levers.", "category": "bikes", "price": 12}, {"id": "d08", "title": "Old commuter cycle, needs new tyres", "text": "Steel-frame cycle for getting around town. Cheap, sturdy and easy to repair.", "category": "bikes", "price": 40}, {"id": "d09", "title": "Mountain bike Orbea, full suspension", "text": "Trail bike, 29 inch wheels, hydraulic disc brakes, serviced in June.", "category": "bikes", "price": 900}, {"id": "d10", "title": "Electric scooter Xiaomi M365", "text": "Scooter with 30 km range, folds for the metro. Great for short trips across the city.", "category": "bikes", "price": 220}, {"id": "d11", "title": "Bike accessories bundle", "text": "Bike lock, bike light, bike bell, bike basket and bike bag. Cheap bike accessories for your bike, your commute and every bike ride. Everything a bike needs.", "category": "bikes", "price": 30}, {"id": "d12", "title": "Compact 2-seater couch, Poblenou", "text": "Grey fabric couch, perfect for a small apartment. Removable covers.", "category": "sofas", "price": 110}, {"id": "d13", "title": "Loveseat in green velvet", "text": "Small sofa for two people, fits studio flats and narrow living rooms.", "category": "sofas", "price": 140}, {"id": "d14", "title": "Corner sofa 5 seats, very large", "text": "Huge corner sofa. You need a big living room and two people to carry it.", "category": "sofas", "price": 300}, {"id": "d15", "title": "Sofa bed for tiny flats", "text": "Space-saving sofa bed, converts in seconds, ideal for a small flat or a guest room.", "category": "sofas", "price": 160}, {"id": "d16", "title": "Sofa cover, washable", "text": "Stretch sofa cover that protects your sofa from pets and stains. Fits 3-seater sofas.", "category": "sofas", "price": 20}, {"id": "d17", "title": "Vintage leather sofa 3-seater", "text": "Heavy three-seater sofa in brown leather, about 2 metres wide.", "category": "sofas", "price": 200}, {"id": "d18", "title": "Small settee, studio size", "text": "Two-seat settee with wooden legs. Compact size, easy to move up narrow stairs.", "category": "sofas", "price": 90}, {"id": "d19", "title": "MacBook Pro 2019, 16 GB RAM", "text": "Great for coding, Docker and Python. Keyboard replaced, new battery.", "category": "laptops", "price": 750}, {"id": "d20", "title": "ThinkPad T14 developer notebook", "text": "Linux installed, 32 GB memory, ideal for software development.", "category": "laptops", "price": 620}, {"id": "d21", "title": "Gaming laptop RTX 3060", "text": "Fast for games, and also good for programming and machine learning.", "category": "laptops", "price": 800}, {"id": "d22", "title": "Laptop bag 15 inch", "text": "Padded laptop bag with three pockets, water resistant, fits any 15 inch laptop.", "category": "laptops", "price": 18}, {"id": "d23", "title": "Chromebook 11 inch for school", "text": "Light Chromebook for kids, browser and homework only.", "category": "laptops", "price": 90}, {"id": "d24", "title": "Laptop stand, aluminium", "text": "Ergonomic stand for your laptop, adjustable height.", "category": "laptops", "price": 15}, {"id": "d25", "title": "Programming books bundle", "text": "Six books on Python, JavaScript and algorithms, good condition.", "category": "laptops", "price": 40}, {"id": "d26", "title": "Dell XPS 13, i7, 16 GB", "text": "Ultrabook for computer science students, compiles code quickly.", "category": "laptops", "price": 540}, {"id": "d27", "title": "Bugaboo Fox pushchair, from newborn", "text": "Comfortable pushchair with a lie-flat seat, rain cover and large basket.", "category": "baby & kids", "price": 350}, {"id": "d28", "title": "Foldable buggy, lightweight", "text": "Maclaren buggy, folds with one hand and fits in a plane cabin. Perfect for holidays.", "category": "baby & kids", "price": 60}, {"id": "d29", "title": "Pram with carrycot, vintage style", "text": "Classic pram for a newborn baby, carrycot and mattress included.", "category": "baby & kids", "price": 120}, {"id": "d30", "title": "Double stroller for twins", "text": "Side-by-side double stroller, sturdy and smooth. A baby stroller for two.", "category": "baby & kids", "price": 180}, {"id": "d31", "title": "Baby car seat Maxi-Cosi", "text": "Group 0+ car seat, safe up to 13 kg, used for one child only.", "category": "baby & kids", "price": 50}, {"id": "d32", "title": "Baby monitor with camera", "text": "Video baby monitor with night vision and two-way audio.", "category": "baby & kids", "price": 35}, {"id": "d33", "title": "Stroller rain cover, universal", "text": "Clear rain cover that fits most strollers. Keeps your stroller dry.", "category": "baby & kids", "price": 10}, {"id": "d34", "title": "Wooden baby crib", "text": "Convertible crib with mattress, three height levels.", "category": "baby & kids", "price": 85}, {"id": "d35", "title": "Kids scooter, three wheels", "text": "Three-wheel scooter for toddlers aged 2 to 5.", "category": "baby & kids", "price": 25}, {"id": "d36", "title": "Bike trailer for children", "text": "Trailer that carries two kids behind your bike, with a weather cover.", "category": "baby & kids", "price": 130}], "queries": {"q1": {"text": "cheap bike for commuting", "rel": ["d01", "d02", "d04", "d08"]}, "q2": {"text": "sofa for a small flat", "rel": ["d12", "d13", "d15", "d18"]}, "q3": {"text": "laptop for programming", "rel": ["d19", "d20", "d21", "d26"]}, "q4": {"text": "baby stroller", "rel": ["d27", "d28", "d29", "d30"]}}};
-</script>
-<script>
+const DATA = {"N":2000,"counts":{"raw":[["the",76529],["and",35576],["of",34123],["to",31937],["is",25195],["in",21822],["it",16107],["that",15924],["as",11378],["with",10792],["for",9961],["his",9587],["this",9578],["film",9517]],"nostop":[["film",9517],["movie",5771],["like",3690],["just",2905],["time",2411],["good",2411],["story",2169],["character",2020],["characters",1859],["way",1693],["make",1642],["life",1586],["does",1568],["really",1558]],"domain":[["like",3690],["just",2905],["good",2411],["time",2411],["story",2169],["character",2020],["characters",1859],["way",1693],["make",1642],["life",1586],["does",1568],["really",1558],["plot",1513],["little",1501]],"tokens":1259869,"types":39659},"words":[["the",2000,1.0],["story",1078,1.62],["good",1182,1.53],["character",1047,1.65],["plot",892,1.81],["wonderful",174,3.44],["boring",217,3.22],["waste",129,3.73],["awful",122,3.79],["masterpiece",85,4.15],["stunning",78,4.23],["dreadful",28,5.23]],"alert":{"neg20":20,"complaint":["boring","waste","awful","worst","terrible","dull","stupid","mess"],"rows":[["neg",0.42,"plot : token director alan smithee steals the only copy of his film \" trio \" from the studio, after they complete the \" final cut \" without him. he  \u2026",[["boring",0.08],["worst",0.24],["stupid",0.04],["mess",0.05]],565],["neg",0.37,"this film is extraordinarily horrendous and i ' m not going to waste any more words on it. \u2026",[["waste",0.37]],19],["neg",0.34,"i think we should, as responsible citizens, all get together and stop jim carrey from making another movie. he ' s changing the cinema as we know i \u2026",[["boring",0.07],["worst",0.06],["terrible",0.08],["stupid",0.13]],339],["neg",0.33,"sylvester stallone has made some crap films in his lifetime, but this has got to be one of the worst. a totally dull story that thinks it can use va \u2026",[["boring",0.07],["waste",0.04],["worst",0.07],["dull",0.08],["stupid",0.07]],761],["neg",0.32,"well there goes another one. sadly this like other movies this year wasn ' t good. this one being almost as bad as ' the omega code ' but not quite  \u2026",[["waste",0.04],["worst",0.06],["terrible",0.12],["stupid",0.07],["mess",0.04]],978],["neg",0.31,"this was the last carry on movie ( if you discount ' carry on columbus ' as a carry on movie ) and was made by a new production company. based in cen \u2026",[["boring",0.04],["waste",0.05],["awful",0.1],["worst",0.08],["terrible",0.05]],518]]},"syn":{"rows":[["awful",122,103],["terrible",122,94],["dreadful",28,21],["horrible",88,57]],"awful":122,"dreadful":28,"both":6},"shop":[{"q":"cheap bike for commuting","rows":[["d11","Bike accessories bundle","bikes",30,0.597,0,0],["d06","Bike helmet adult, size L","bikes",15,0.29,0,0],["d36","Bike trailer for children","baby & kids",130,0.226,0,0],["d05","Kids bike 16 inch, blue","bikes",35,0.211,0,0],["d09","Mountain bike Orbea, full suspension","bikes",900,0.194,0,0]],"found":0,"present":{"cheap":2,"bike":8,"commuting":0},"rel":["d01","d02","d04","d08"],"relTitles":["Second-hand city bicycle, Gr\u00e0cia","Folding bike, barely used","Electric bike Xiaomi, 40 km range","Old commuter cycle, needs new tyres"]},{"q":"sofa for a small flat","rows":[["d15","Sofa bed for tiny flats","sofas",160,0.445,1,0],["d16","Sofa cover, washable","sofas",20,0.299,0,0],["d13","Loveseat in green velvet","sofas",140,0.258,1,0],["d17","Vintage leather sofa 3-seater","sofas",200,0.203,0,0],["d14","Corner sofa 5 seats, very large","sofas",300,0.198,0,0]],"found":2,"present":{"sofa":5,"small":4,"flat":3},"rel":["d12","d13","d15","d18"],"relTitles":["Compact 2-seater couch, Poblenou","Loveseat in green velvet","Sofa bed for tiny flats","Small settee, studio size"]},{"q":"laptop for programming","rows":[["d21","Gaming laptop RTX 3060","laptops",800,0.399,1,0],["d22","Laptop bag 15 inch","laptops",18,0.372,0,0],["d24","Laptop stand, aluminium","laptops",15,0.35,0,0],["d25","Programming books bundle","laptops",40,0.207,0,0],["d01","Second-hand city bicycle, Gr\u00e0cia","bikes",90,0.0,0,0]],"found":1,"present":{"laptop":3,"programming":2},"rel":["d19","d20","d21","d26"],"relTitles":["MacBook Pro 2019, 16 GB RAM","ThinkPad T14 developer notebook","Gaming laptop RTX 3060","Dell XPS 13, i7, 16 GB"]},{"q":"baby stroller","rows":[["d30","Double stroller for twins","baby & kids",180,0.668,1,0],["d33","Stroller rain cover, universal","baby & kids",10,0.371,0,0],["d32","Baby monitor with camera","baby & kids",35,0.259,0,0],["d34","Wooden baby crib","baby & kids",85,0.151,0,0],["d29","Pram with carrycot, vintage style","baby & kids",120,0.122,1,0]],"found":1,"present":{"baby":5,"stroller":2},"rel":["d27","d28","d29","d30"],"relTitles":["Bugaboo Fox pushchair, from newborn","Foldable buggy, lightweight","Pram with carrycot, vintage style","Double stroller for twins"]}],"rep":{"d11":10,"d06":4,"d02":1,"d04":1}};
 const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-const DOCS = DATA.docs, Q = DATA.queries, N = DOCS.length;
-const byId = Object.fromEntries(DOCS.map((d, i) => [d.id, { ...d, i }]));
-const cache = {}; const getE = o => cache[(+o.stop) + "" + (+o.stem)] || (cache[(+o.stop) + "" + (+o.stem)] = buildEngine(DOCS, o));
-const E0 = getE({ stop: true, stem: true });
 const WC = ["var(--w1)", "var(--w2)", "var(--w3)", "var(--w4)"];
 const sum = a => a.reduce((s, x) => s + x, 0);
-const rankAll = q => { const parts = tfidfParts(E0, q), sc = parts.map(p => sum(p.map(x => x.s))); return { parts, sc, ord: order(sc) }; };
-const relOf = q => { const t = q.trim().toLowerCase(); for (const k in Q) if (Q[k].text === t) return Q[k].rel; return null; };
 const fmtN = n => Math.round(n).toLocaleString("en-US");
-
 const S = []; // sheets: {title, html, init}
 const sheet = (title, html, init) => S.push({ title, html, init });
 const head = (tag, title, lead) => `<div class="hd"><div class="sn">${tag}</div><div><h2>${title}</h2>${lead ? `<p class="lead">${lead}</p>` : ""}</div></div>`;
+const f2 = x => x.toFixed(2), f1 = x => x.toFixed(1);
+const D = DATA;
+const bars = (rows, max, col, w, vw) => rows.map(([l, v, extra]) => `<div class="brow" style="grid-template-columns:${w || "8em"} minmax(0,1fr) ${vw || "4.6em"}"><span class="lab">${esc(l)}</span><div class="track"><div class="fill" style="width:${Math.max(1, v / max * 100)}%${col ? ";background:" + col : ""}"></div></div><span class="val">${extra === undefined ? fmtN(v) : extra}</span></div>`).join("");
+const idfOf = df => Math.log((1 + D.N) / (1 + df)) + 1;
 
-/* ---------- 1 cover ---------- */
-sheet("Cover", `<div class="cover">
-  <div class="tag">Text retrieval &middot; a search engine, step by step</div>
-  <h1>How a search engine reads text</h1>
-  <p class="lead" style="margin-top:1em">A customer types <span class="chip hi">cheap bike for commuting</span> into a marketplace with 36 listings. Which listing comes first, and why?</p>
-  <div class="scroll" style="margin-top:1.6em"><svg viewBox="0 0 720 96" width="100%" style="min-width:560px;max-width:900px" role="img" aria-label="Pipeline: raw text, tokens, inverted index, TF-IDF weights, ranked results.">
-    ${["Raw text", "1 Tokens", "2 Index", "3 TF-IDF", "Ranking"].map((t, i) => `<rect x="${4 + i * 144}" y="20" width="120" height="44" class="ink" stroke-width="1.6" ${i > 0 && i < 4 ? 'style="fill:var(--ink)"' : ""}/><text x="${64 + i * 144}" y="47" text-anchor="middle" style="font-size:13px;fill:${i > 0 && i < 4 ? "var(--paper)" : "var(--ink)"}">${t}</text>${i < 4 ? `<path d="M${126 + i * 144} 42h16m-5-4 5 4-5 4" class="ink" stroke-width="1.6"/>` : ""}`).join("")}
-    <path d="M148 84h420" class="ink" stroke-width="1.2"/><path d="M148 78v12M568 78v12" class="ink" stroke-width="1.2"/><text x="358" y="76" text-anchor="middle" style="fill:var(--signal);font-size:12px">THE THREE STEPS ON THESE SHEETS</text></svg></div></div>`);
+sheet("Cover", `<div class="cover"><div class="tag">Text mining for business &middot; week 3</div><h1>What do customers say?</h1>
+ <p class="lead" style="margin-top:1em">StreamNow has 2,000 film reviews. Nobody can read them all. What do viewers talk about, which reviews do we read first, and will a search box find what we want?</p>
+ <div class="scroll" style="margin-top:1.6em"><svg viewBox="0 0 880 96" width="100%" style="min-width:640px;max-width:1000px" role="img" aria-label="Steps: count words, rare words, alert list, search, where it fails.">
+ ${["Count", "Rare words", "Alert list", "Search", "Where it fails"].map((t, i) => `<rect x="${4 + i * 176}" y="20" width="146" height="44" class="ink" stroke-width="1.6" ${i === 1 ? 'style="fill:var(--signal);stroke:var(--signal)"' : ""}/><text x="${77 + i * 176}" y="47" text-anchor="middle" style="fill:${i === 1 ? "var(--paper)" : "var(--ink)"};font-size:13px">${t}</text>${i < 4 ? `<path d="M${150 + i * 176} 42h30" class="ink" stroke-width="1.4"/>` : ""}`).join("")}</svg></div></div>`);
 
-/* ---------- 2 text mining chain ---------- */
-const CHAIN = [
- ["Business question", "Someone has a decision to make. The question fixes what counts as a useful result.", "Which complaints make guests leave a low score, and which hotels should fix them first?", "A question and a definition of success"],
- ["Collect the text", "Export from a database, files, an API or a web page.", "Reviews arrive from the booking site as a CSV file.", "A table with a text column"],
- ["Clean and prepare", "Remove duplicates and empty rows, pick the language, split into tokens.", "Drop reviews under 5 words. Keep English and Spanish apart.", "Tokens: one list per document"],
- ["Analyse", "Search, keywords, topics, classification, sentiment.", "Find topics in negative reviews: noise, cleanliness, staff.", "Ranked lists, themes or labels"],
- ["Check with people", "Read a sample, compare with human labels, measure the errors.", "Two people label 100 reviews. The model agrees on 8 out of 10.", "An error rate"],
- ["Use and monitor", "Put the results in a dashboard or an app. Watch the quality over time.", "A weekly dashboard for hotel managers.", "A running system"]];
-sheet("What is text mining", head("OVERVIEW", "Text mining is a chain of steps", "Text mining turns text (emails, reviews, tickets, contracts) into something that can be counted, compared and decided on. Click each step.") +
-  `<div class="flow" id="chain">${CHAIN.map((c, i) => `<button class="step" data-i="${i}"><b>${i + 1}</b>${c[0]}</button>`).join("")}</div>
-  <div class="box" id="chain-d" style="margin-top:1.2em"></div>`,
-  root => { const show = i => { $$(".step", root).forEach((b, j) => b.classList.toggle("on", j === i)); const c = CHAIN[i]; $("#chain-d", root).innerHTML = `<div class="two"><div><span class="tag">What happens</span><p style="margin:.2em 0 .8em">${c[1]}</p><span class="tag">What comes out</span><p style="margin:.2em 0">${c[3]}</p></div><div><span class="tag">Example: hotel chain, 200,000 reviews</span><p style="margin:.2em 0;font-size:1.1em">${c[2]}</p></div></div>`; };
-    $("#chain", root).onclick = e => { const b = e.target.closest(".step"); if (b) show(+b.dataset.i); }; show(0); });
+sheet("Counting words", head("01", "What do viewers talk about?", "The same 2,000 reviews, three versions of the count.") +
+ `<div class="row" id="c-t"><button class="tab on" data-k="raw">Raw counts</button><button class="tab" data-k="nostop">Without stop words</button><button class="tab" data-k="domain">+ film, movie, one removed</button></div>
+  <div class="box" style="margin-top:.9em"><span class="tag" id="c-tag"></span><div id="c-b"></div></div><p class="note" id="c-n"></p>`,
+ root => {
+  const N = { raw: `The top is grammar: the, and, of. ${fmtN(D.counts.tokens)} words in total, ${fmtN(D.counts.types)} different words.`, nostop: "Grammar is gone. Now film and movie lead. They are not English stop words, but every film review has them.", domain: "Now like, just, good, time, story. These describe the collection, not one review. We still cannot say which review to read." };
+  const T = { raw: "Raw counts", nostop: "Without stop words", domain: "Film, movie and one also removed" };
+  let k = "raw"; const draw = () => { const r = D.counts[k].slice(0, 12); $("#c-tag", root).textContent = T[k] + " (top 12)"; $("#c-b", root).innerHTML = bars(r, r[0][1]); $("#c-n", root).textContent = N[k]; $$("#c-t .tab", root).forEach(b => b.classList.toggle("on", b.dataset.k === k)); };
+  $("#c-t", root).onclick = e => { const b = e.target.closest("[data-k]"); if (b) { k = b.dataset.k; draw(); } }; draw(); });
 
-/* ---------- 3 uses ---------- */
-const USES = [
- ["Search and retrieval", "Find a product, a ticket or a policy from a few words.", "A ranked list of documents", "Marketplace: “cheap bike for commuting”. Support: “invoice charged twice”."],
- ["Keywords and topics", "What are customers talking about in 50,000 reviews?", "Main themes and how big each one is", "Airline: baggage, delays and food are the three big themes this month."],
- ["Classification and sentiment", "Send each support ticket to the right team. Measure brand mood.", "One label per text", "“I was charged twice” → Billing team, negative."],
- ["Extraction", "Pull names, dates and amounts out of contracts and invoices.", "A table built from text", "Contract → start date, notice period, amount."],
- ["Question answering", "An internal assistant that answers from company documents.", "A written answer", "It first searches for the right pages, then writes the answer from them."]];
-sheet("Where it is used", head("OVERVIEW", "What text mining is used for", "Five families of tasks.") +
-  `<div class="two wide"><div class="row" id="uses" style="flex-direction:column;align-items:stretch">${USES.map((u, i) => `<button class="tab" data-i="${i}" style="text-align:left">${u[0]}</button>`).join("")}</div><div class="box" id="uses-d"></div></div>`,
-  root => { const show = i => { $$(".tab", root).forEach((b, j) => b.classList.toggle("on", j === i)); const u = USES[i]; $("#uses-d", root).innerHTML = `<span class="tag">Business question</span><p style="margin:.2em 0 .7em">${u[1]}</p><span class="tag">Typical result</span><p style="margin:.2em 0 .7em">${u[2]}</p><span class="tag">Example</span><p style="margin:.2em 0">${u[3]}</p>`; };
-    $("#uses", root).onclick = e => { const b = e.target.closest(".tab"); if (b) show(+b.dataset.i); }; show(0); });
+sheet("Rare or common", head("02", "A rare word says more", "Click a word. How many of the 2,000 reviews contain it, and what weight does it get?") +
+ `<div class="row" id="r-w"></div>
+  <div class="box" style="margin-top:.8em"><div class="scroll"><table id="r-t"></table></div></div>
+  <div class="row" style="margin-top:.7em"><label class="ck">times the word appears in a review (TF) <input type="range" id="r-tf" min="1" max="10" value="1"> <b id="r-tfv"></b></label></div>
+  <p class="note" id="r-n"></p>`,
+ root => {
+  const W = D.words; let sel = "waste";
+  $("#r-w", root).innerHTML = W.map(r => `<button class="chipbtn" data-w="${r[0]}">${r[0]}</button>`).join("");
+  const draw = () => { const r = W.find(x => x[0] === sel), tf = +$("#r-tf", root).value, idf = r[2], one = Math.round(D.N / r[1]);
+   $("#r-tfv", root).textContent = tf;
+   $("#r-t", root).innerHTML = `<tr><th>Word</th><th>Reviews with it</th><th>Rarity</th><th>IDF weight</th><th>TF &times; IDF</th></tr><tr><td><b>${esc(r[0])}</b></td><td>${fmtN(r[1])} of ${fmtN(D.N)}</td><td>1 in ${one}</td><td>${f2(idf)}</td><td><b class="big" style="font-size:1.4em">${f2(tf * idf)}</b></td></tr>`;
+   const s = W.find(x => x[0] === "story"), w = W.find(x => x[0] === "waste");
+   $("#r-n", root).textContent = `Compare: "story" said twice = ${f2(2 * s[2])}. "waste" said once = ${f2(w[2])}. One rare word beats two common ones. "the" is in every review: weight 1, whatever the TF.`;
+   $$("#r-w .chipbtn", root).forEach(b => b.classList.toggle("on", b.dataset.w === sel)); };
+  $("#r-w", root).onclick = e => { const b = e.target.closest("[data-w]"); if (b) { sel = b.dataset.w; draw(); } };
+  $("#r-tf", root).oninput = draw; draw(); });
 
-/* ---------- 4 tools ---------- */
-const TOOLS = [
- ["Prepare and explore text", "Python: pandas, NLTK, spaCy. SQL for the source data.", "Load tables, split text into tokens, count words."],
- ["Search over many documents", "Elasticsearch, OpenSearch, Solr. Full-text search in PostgreSQL.", "Keep an inverted index and rank results, often with BM25."],
- ["Weights, topics, classifiers", "scikit-learn, gensim, BERTopic.", "TF-IDF vectors, topic models, text classifiers."],
- ["Meaning-based search", "Hugging Face models, sentence embeddings, vector databases (FAISS, pgvector), language-model APIs.", "Match by meaning instead of exact words."],
- ["Ready-made cloud services", "Amazon Comprehend, Azure AI Language, Google Cloud Natural Language.", "Sentiment, entities and topics through an API."],
- ["Analytics platforms", "SAS and similar.", "Analysis in one managed environment."]];
-sheet("Tools", head("OVERVIEW", "Tools used in practice", "The search engines on this list work on the ideas shown in the sheets that follow.") +
-  `<div class="scroll"><table id="tl"><tr><th>Need</th><th>Tools</th><th>What they do</th></tr>${TOOLS.map(t => `<tr><td><b>${t[0]}</b></td><td>${t[1]}</td><td>${t[2]}</td></tr>`).join("")}</table></div>`);
+sheet("Alert list", head("03", "Which reviews do I read first?", "Weight of the complaint words in each review: boring, waste, awful, worst, terrible, dull, stupid, mess.") +
+ `<div class="row"><label class="ck"><input type="checkbox" id="a-l"> show the real label (positive or negative)</label></div>
+  <div class="box" style="margin-top:.6em"><div class="scroll"><table id="a-t" style="font-size:.78em"></table></div></div><p class="note" id="a-n"></p>`,
+ root => { const draw = () => { const on = $("#a-l", root).checked;
+   $("#a-t", root).innerHTML = `<tr><th>Alert score</th><th>Review (start)</th><th>Words found (weight)</th>${on ? "<th>Label</th>" : ""}</tr>` + D.alert.rows.slice(0, 5).map(r => `<tr><td><b>${f2(r[1])}</b></td><td>${esc(r[2])}</td><td>${r[3].map(x => x[0] + " " + f2(x[1])).join(", ")}</td>${on ? `<td><span class="chip ${r[0] === "neg" ? "hi" : ""}">${r[0] === "neg" ? "negative" : "positive"}</span></td>` : ""}</tr>`).join("");
+   $("#a-n", root).textContent = on ? `Top 20 reviews: ${D.alert.neg20} of 20 are negative. Overall only half are. A good first filter, not a verdict: a sarcastic positive review can use "waste" too.` : "Read the five. Would you escalate them? Then tick the box."; };
+  $("#a-l", root).onchange = draw; draw(); });
 
-/* ---------- 6 hook ---------- */
-sheet("Why search is hard", head("PROBLEM", "A simple text match: what does the customer get?", "The left column returns every listing that contains exactly the typed text. The right column ranks all listings by a score.") +
-  `<div class="row"><input type="text" id="hk-q" value="cheap bike for commuting" aria-label="Query">${Object.values(Q).map(q => `<button class="chipbtn" data-q="${esc(q.text)}">${esc(q.text)}</button>`).join("")}</div>
-  <div class="two" style="margin-top:1em"><div class="box"><span class="tag">Exact-text match</span><div id="hk-l"></div></div>
-  <div class="box"><span class="tag">Ranked search</span><div id="hk-r"><button class="btn" id="hk-show">Show ranked result</button></div></div></div>`,
-  root => { let shown = false; const q = () => $("#hk-q", root).value;
-    const draw = () => { const t = q().trim().toLowerCase(); const hits = t ? DOCS.filter(d => (d.title + ". " + d.text).toLowerCase().includes(t)) : [];
-      $("#hk-l", root).innerHTML = `<p class="big" style="margin:.1em 0">${hits.length}</p><p style="margin:.1em 0 .5em">${hits.length === 0 ? "listings contain exactly this text." : hits.length === 1 ? "listing contains this text." : "listings contain this text, all with the same rank."}</p><ul style="margin:0;padding-left:1.1em;font-size:.92em">${hits.slice(0, 8).map(d => `<li>${esc(d.title)}</li>`).join("")}${hits.length > 8 ? `<li>&hellip; and ${hits.length - 8} more</li>` : ""}</ul>`;
-      if (shown) { const r = rankAll(q()); $("#hk-r", root).innerHTML = `<p class="mono" style="margin:0 0 .4em">Every listing gets a score, best first</p>` + r.ord.slice(0, 6).map((i, k) => `<div class="brow" style="grid-template-columns:2em minmax(0,1fr) 3.6em;margin:.25em 0"><span class="mono">#${k + 1}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(DOCS[i].title)}</span><span class="val">${r.sc[i].toFixed(3)}</span></div>`).join("") + ``; } };
-    $("#hk-q", root).oninput = draw; root.addEventListener("click", e => { const b = e.target.closest("[data-q]"); if (b) { $("#hk-q", root).value = b.dataset.q; draw(); } if (e.target.id === "hk-show") { shown = true; draw(); } }); draw(); });
+sheet("Search the shop", head("04", "A search box for a marketplace", "Top 4 results for four customer queries.") +
+ `<div class="row" id="s-t"></div>
+  <div class="box" style="margin-top:.7em"><div class="scroll"><table id="s-r" style="font-size:.8em"></table></div></div>
+  <p class="note" id="s-n" style="margin-top:.6em"></p><div class="box" style="margin-top:.5em"><div id="s-p"></div></div>`,
+ root => {
+  const NOTE = ["None of the four commuting bikes is in the top 4. The word \"commuting\" is in no listing (sellers wrote commute, commuter, bicycle). Only \"bike\" matches, and the bundle says it 10 times.",
+   "Two good listings found. A sofa cover and a vintage 3-seater rank high because they say \"sofa\". The ones we want say couch, loveseat, settee.",
+   "One of four. A laptop bag and a stand rank high: they contain \"laptop\". The notebooks and the MacBook do not.",
+   "One of four. A rain cover and a baby monitor beat the pram, the buggy and the pushchair. Different words for the same thing."];
+  let k = 0; $("#s-t", root).innerHTML = D.shop.map((s, i) => `<button class="tab" data-k="${i}">${esc(s.q)}</button>`).join("");
+  const draw = () => { const s = D.shop[k];
+   $("#s-r", root).innerHTML = `<tr><th>#</th><th>Listing</th><th>Category</th><th>Price</th><th>Score</th><th>Wanted?</th></tr>` + s.rows.slice(0, 4).map((r, i) => `<tr><td>${i + 1}</td><td>${esc(r[1])}</td><td>${esc(r[2])}</td><td>${r[3]} €</td><td>${f2(r[4])}</td><td>${r[5] ? '<span class="chip hi">yes</span>' : '<span class="chip drop">no</span>'}</td></tr>`).join("");
+   $("#s-p", root).innerHTML = Object.entries(s.present).map(([w, n]) => `<span class="chip ${n ? "" : "chg"}" style="margin-right:.5em">${esc(w)} in ${n} listing${n === 1 ? "" : "s"}</span>`).join("") + `<div class="mono" style="margin-top:.4em;font-size:.78em">Wanted: ${s.relTitles.map(esc).join(" · ")}</div>`;
+   $("#s-n", root).textContent = NOTE[k]; $$("#s-t .tab", root).forEach(b => b.classList.toggle("on", +b.dataset.k === k)); };
+  $("#s-t", root).onclick = e => { const b = e.target.closest("[data-k]"); if (b) { k = +b.dataset.k; draw(); } }; draw(); });
 
-/* ---------- 7 tokens ---------- */
-sheet("Tokens", head("STEP 1 OF 3", "Tokens: cut text into pieces a computer can compare", "Text is split into words, common words are dropped, and words are cut to a root. Switch the two cleaning steps on and off.") +
-  `<div class="row"><input type="text" id="tk-s" value="Cheap bikes for commuting to the office" aria-label="Sentence"><select id="tk-l" aria-label="Load a listing"><option value="">Load a listing&hellip;</option>${DOCS.map(d => `<option value="${d.id}">${d.id} ${esc(d.title)}</option>`).join("")}</select></div>
-  <div class="row" style="margin:.6em 0 .9em"><label class="ck"><input type="checkbox" id="tk-stop" checked> Remove stopwords</label><label class="ck"><input type="checkbox" id="tk-stem" checked> Stemming</label></div>
-  <div class="scroll box" id="tk-out"></div>
-  <p class="mono" id="tk-sum" style="margin:.7em 0 0"></p>
-  <div class="two" style="margin-top:1em"><div class="box"><span class="tag">Our tiny stemmer vs a professional one</span><div class="scroll"><table><tr><th>Word</th><th>Ours</th><th>Snowball</th></tr>${[["commuting", "commut", "commut"], ["bicycles", "bicycl", "bicycl"], ["couches", "couch", "couch"], ["programming", "programm", "program"], ["pushchair", "pushchair", "pushchair"]].map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td${r[1] !== r[2] ? ' style="color:var(--signal)"' : ""}>${r[2]}</td></tr>`).join("")}</table></div></div>
-  <div class="box"><span class="tag">How stemming works</span><p style="margin:.2em 0">A stem is not always a real word. It only has to be the same for every form of the word, so <i>bike</i> and <i>bikes</i> end up in the same index entry. The simple stemmer here cuts endings by rules; a professional one uses more rules and makes fewer mistakes.</p></div></div>`,
-  root => { const draw = () => { const text = $("#tk-s", root).value, so = $("#tk-stop", root).checked, sm = $("#tk-stem", root).checked;
-      const words = (text.toLowerCase().match(/[a-zà-ÿ0-9]+/g) || []).slice(0, 40); const kept = [];
-      const r1 = words.map(w => `<span class="chip">${esc(w)}</span>`);
-      const r2 = words.map(w => so && STOP.has(w) ? `<span class="chip drop">${esc(w)}</span>` : `<span class="chip">${esc(w)}</span>`);
-      const r3 = words.map(w => { if (so && STOP.has(w)) return `<span class="chip void">&nbsp;</span>`; const t = sm ? stem(w) : w; kept.push(t); return `<span class="chip${t !== w ? " chg" : ""}">${esc(t)}</span>`; });
-      const row = (l, c) => `<div class="tokrow" style="min-width:max-content"><span class="tag">${l}</span>${c.join("")}</div>`;
-      $("#tk-out", root).innerHTML = row("1 split", r1) + row("2 stopwords", r2) + row("3 stem", r3);
-      $("#tk-sum", root).textContent = `${words.length} words in → ${kept.length} tokens out: ${kept.join(" · ") || "(none)"}`; };
-    root.addEventListener("input", e => { if (e.target.id === "tk-l" && e.target.value) $("#tk-s", root).value = byId[e.target.value].title + ". " + byId[e.target.value].text; draw(); }); draw(); });
+sheet("Same meaning", head("05", "Different words, same meaning", "Reviews that say \"very bad\" in four ways.") +
+ `<div class="two"><div class="box"><span class="tag">Reviews containing the word</span><div id="y-b"></div></div>
+  <div class="box"><span class="tag">Search \"awful\" and \"dreadful\"</span><div id="y-c"></div></div></div><p class="note" id="y-n"></p>`,
+ root => { const r = D.syn.rows, m = Math.max(...r.map(x => x[1]));
+  $("#y-b", root).innerHTML = bars(r.map(x => [x[0], x[1], `${x[1]} (${x[2]} neg)`]), m, "var(--w2)", "6em", "8.5em");
+  const s = D.syn; $("#y-c", root).innerHTML = bars([["awful", s.awful], ["dreadful", s.dreadful], ["both", s.both]], s.awful, "var(--w1)", "6em");
+  $("#y-n", root).textContent = `A search for "awful" finds ${s.awful} reviews and misses most of the ${s.dreadful} that say "dreadful": only ${s.both} contain both. Counting words cannot see that they mean the same. This is the vocabulary mismatch problem.`; });
 
-/* ---------- 8 vocabulary ---------- */
-sheet("Vocabulary", head("STEP 1 OF 3", "What cleaning does to the whole catalogue", "Computed live from the 36 listings. The most frequent tokens are the catalogue&rsquo;s own words, so they do not separate one listing from another. Click a bar to see which listings contain the token.") +
-  `<div class="two"><div class="box"><span class="tag">Distinct words (vocabulary)</span><div class="bars" id="vc-f"></div><p id="vc-once" style="margin:.8em 0 0"></p></div>
-  <div class="box"><span class="tag">Most frequent tokens</span><div class="bars" id="vc-t"></div><p id="vc-d" class="mono" style="margin:.6em 0 0;text-transform:none">&nbsp;</p></div></div>
-  `,
-  root => { const cfg = [["raw words", { stop: false, stem: false }], ["no stopwords", { stop: true, stem: false }], ["stemmed", { stop: true, stem: true }]];
-    const info = cfg.map(([l, o]) => { const e = getE(o); return [l, e.df.size, sum(e.toks.map(t => t.length))]; });
-    $("#vc-f", root).innerHTML = info.map(x => `<div class="brow"><span class="lab">${x[0]}</span><div class="track"><div class="fill" style="width:${x[1] / info[0][1] * 100}%"></div></div><span class="val">${x[1]}</span></div>`).join("") + `<p class="mono" style="margin:.5em 0 0;text-transform:none">word occurrences: ${info.map(x => x[2]).join(" → ")}</p>`;
-    const tot = new Map(); E0.toks.forEach(t => t.forEach(w => tot.set(w, (tot.get(w) || 0) + 1)));
-    const once = [...tot.values()].filter(v => v === 1).length, df1 = [...E0.df.values()].filter(v => v === 1).length;
-    $("#vc-once", root).innerHTML = `<b>${once}</b> of ${tot.size} tokens appear only once in the whole catalogue. <b>${df1}</b> appear in a single listing.`;
-    const top = [...tot.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)).slice(0, 12), mx = top[0][1];
-    $("#vc-t", root).innerHTML = top.map(([w, c]) => `<div class="brow" data-w="${w}" style="cursor:pointer"><span class="lab">${w}</span><div class="track"><div class="fill" style="width:${c / mx * 100}%"></div></div><span class="val">${c}</span></div>`).join("");
-    $("#vc-t", root).onclick = e => { const r = e.target.closest("[data-w]"); if (!r) return; const w = r.dataset.w, ids = E0.postings.get(w).map(p => DOCS[p[0]].id); $("#vc-d", root).textContent = `"${w}" appears in ${ids.length} listings: ${ids.join(", ")}`; }; });
-
-/* ---------- 9 index ---------- */
-sheet("Inverted index", head("STEP 2 OF 3", "The inverted index: word → list of documents", "Like the index at the back of a book: for each token, the listings that contain it. Numbers in brackets show how many times the word appears in that listing.") +
-  `<div class="row"><input type="text" id="ix-q" value="cheap bike for commuting" aria-label="Query">${Object.values(Q).map(q => `<button class="chipbtn" data-q="${esc(q.text)}">${esc(q.text)}</button>`).join("")}</div><div class="row" style="margin-top:.5em"><label class="ck"><input type="radio" name="ix-m" value="and" checked> AND: every word must match</label><label class="ck"><input type="radio" name="ix-m" value="or"> OR: any word</label></div>
-  <div class="two wide" style="margin-top:1em"><div class="box"><span class="tag">Postings lists</span><div id="ix-p" style="display:grid;gap:.6em"></div>
-   <div id="ix-r" style="margin-top:.5em"></div></div>
-  <div class="box"><span class="tag">Why engines use an index</span><p style="margin:.2em 0 .6em">Catalogue size: <b id="ix-n"></b> documents</p><input type="range" id="ix-s" min="1.5" max="8" step="0.1" value="6" aria-label="Catalogue size"><div class="bars" id="ix-b" style="margin-top:.8em"></div><p id="ix-t" style="margin:.7em 0 0;font-size:.92em"></p></div></div>`,
-  root => { const draw = () => { const q = $("#ix-q", root).value, toks = [...new Set(tokenize(q, E0.o))], mode = $("input[name=ix-m]:checked", root).value;
-      $("#ix-p", root).innerHTML = toks.length ? toks.map(w => { const p = E0.postings.get(w) || []; const mx = Math.max(0, ...p.map(x => x[1])); return `<div><span class="chip on">${esc(w)}</span> <span class="mono">df ${p.length}</span><div class="postings" style="margin-top:.3em">${p.length ? p.map(([i, tf]) => `<span class="pc">${DOCS[i].id} <b>(${tf})</b></span>`).join("") : '<span class="mono">not in the index</span>'}</div></div>`; }).join("") : `<span class="mono">Type a query</span>`;
-      const sets = toks.map(w => new Set((E0.postings.get(w) || []).map(p => p[0]))); let res = [];
-      if (sets.length) res = mode === "and" ? [...sets.reduce((a, b) => new Set([...a].filter(x => b.has(x))))] : [...new Set(sets.flatMap(s => [...s]))];
-      res.sort((a, b) => a - b);
-      $("#ix-r", root).innerHTML = `<p style="margin:.2em 0"><b>${res.length}</b> listing${res.length === 1 ? "" : "s"} &middot; in no useful order</p><ul style="margin:0;padding-left:1.1em;font-size:.9em">${res.slice(0, 6).map(i => `<li>${DOCS[i].id} ${esc(DOCS[i].title)}</li>`).join("")}${res.length > 6 ? `<li>&hellip;</li>` : ""}</ul>`;
-      const size = Math.round(10 ** +$("#ix-s", root).value); $("#ix-n", root).textContent = fmtN(size);
-      const dfs = toks.map(w => (E0.postings.get(w) || []).length).filter(x => x > 0), m = dfs.length ? Math.min(...dfs) : 0, reads = Math.max(1, Math.round(m / N * size)), lg = x => Math.log10(Math.max(1, x)) / 8.2 * 100;
-      $("#ix-b", root).innerHTML = `<div class="brow" style="grid-template-columns:5.5em minmax(0,1fr) 6.5em"><span class="lab">scan all</span><div class="track"><div class="fill" style="width:${lg(size)}%"></div></div><span class="val">${fmtN(size)}</span></div><div class="brow" style="grid-template-columns:5.5em minmax(0,1fr) 6.5em"><span class="lab">use index</span><div class="track"><div class="fill" style="width:${lg(reads)}%;background:var(--signal)"></div></div><span class="val">${fmtN(reads)}</span></div><p class="mono" style="margin:0;text-transform:none">documents checked (log scale)</p>`;
-      $("#ix-t", root).textContent = m ? `The engine starts from the shortest list (${m} of ${N} listings, ${(m / N * 100).toFixed(0)}%). The rarer the word, the bigger the saving.` : "None of the words is in the index."; };
-    root.addEventListener("input", draw); root.addEventListener("click", e => { const b = e.target.closest("[data-q]"); if (b) { $("#ix-q", root).value = b.dataset.q; draw(); } }); draw(); });
-
-/* ---------- 10 IDF ---------- */
-sheet("TF and IDF", head("STEP 3 OF 3", "TF-IDF: how much is a word worth?", "TF: how often the word appears in this listing. IDF: how rare the word is in the catalogue. Weight = TF × IDF.") +
-  `<div class="two"><div class="box"><span class="tag">IDF of one word</span><div class="row"><input type="text" id="id-w" value="bike" aria-label="Word" style="width:10em">${["cheap", "commuting", "bike", "sofa", "the"].map(w => `<button class="chipbtn" data-w="${w}">${w}</button>`).join("")}</div>
-   <p id="id-t" style="margin:.7em 0 .3em"></p><div class="scroll"><svg id="id-svg" viewBox="0 0 380 210" width="100%" style="min-width:300px" role="img" aria-label="IDF falls as more listings contain the word"></svg></div><p class="mono" style="margin:0;text-transform:none" id="id-h"></p></div>
-  <div class="box"><span class="tag">One listing, by hand</span><div class="row"><select id="id-d" aria-label="Listing">${DOCS.map(d => `<option value="${d.id}"${d.id === "d02" ? " selected" : ""}>${d.id} ${esc(d.title)}</option>`).join("")}</select><select id="id-q" aria-label="Query">${Object.values(Q).map(q => `<option>${esc(q.text)}</option>`).join("")}</select></div>
-   <div class="scroll" style="margin-top:.7em"><table id="id-tab"></table></div><p class="note" id="id-n"></p></div></div>`,
-  root => { const idf = w => idfTfidf(E0, w); const draw = () => { const raw = $("#id-w", root).value.trim().toLowerCase(), w = raw.match(/[a-zà-ÿ0-9]+/) ? raw.match(/[a-zà-ÿ0-9]+/)[0] : "";
-      const t = w ? (STOP.has(w) ? null : stem(w)) : ""; const df = t ? (E0.df.get(t) || 0) : 0;
-      $("#id-t", root).innerHTML = !w ? "Type a word." : t === null ? `<b>${esc(w)}</b> is a stopword. It is removed before this step.` : df === 0 ? `<b>${esc(t)}</b> is in no listing, so it cannot match anything.` : `<b>${esc(t)}</b> is in <b>${df}</b> of ${N} listings. IDF = ln((1 + ${N}) / (1 + ${df})) + 1 = <b>${idf(t).toFixed(2)}</b>`;
-      const X = d => 40 + (d - 1) / (N - 1) * 320, Y = v => 180 - (v - 1) / 3.7 * 160; let path = ""; for (let d = 1; d <= N; d++) path += (d === 1 ? "M" : "L") + X(d).toFixed(1) + " " + Y(Math.log((1 + N) / (1 + d)) + 1).toFixed(1);
-      const hist = {}; E0.df.forEach(v => hist[v] = (hist[v] || 0) + 1);
-      $("#id-svg", root).innerHTML = `<path d="M40 180H360M40 20V180" class="ink" stroke-width="1.2"/>${[1, 2, 3, 4].map(v => `<path d="M40 ${Y(v)}h-4" class="ink"/><text x="32" y="${Y(v) + 4}" text-anchor="end">${v}</text>`).join("")}${[1, 10, 20, 30, 36].map(d => `<path d="M${X(d)} 180v4" class="ink"/><text x="${X(d)}" y="196" text-anchor="middle">${d}</text>`).join("")}<path d="${path}" class="ink" stroke-width="2.2" style="stroke:var(--ink)"/>${t && df ? `<circle cx="${X(df)}" cy="${Y(idf(t))}" r="6" style="fill:var(--signal);stroke:var(--paper);stroke-width:2"/><path d="M${X(df)} ${Y(idf(t))}V180M40 ${Y(idf(t))}H${X(df)}" style="stroke:var(--signal);stroke-dasharray:3 3;fill:none"/>` : ""}<text x="200" y="208" text-anchor="middle">listings that contain the word (df)</text><text x="6" y="14">IDF</text>`;
-      $("#id-h", root).textContent = `Catalogue: ${hist[1]} tokens are in one listing only; ${hist[2] || 0} in two; ${hist[3] || 0} in three.`;
-      const d = byId[$("#id-d", root).value], qt = [...new Set(tokenize($("#id-q", root).value, E0.o))], toks = E0.toks[d.i], c = {}; toks.forEach(x => c[x] = (c[x] || 0) + 1);
-      const rows = qt.map(x => [x, c[x] || 0, idf(x), (c[x] || 0) * idf(x)]);
-      $("#id-tab", root).innerHTML = `<tr><th>Query token</th><th>TF</th><th>IDF</th><th>TF × IDF</th></tr>${rows.map(r => `<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2].toFixed(2)}</td><td>${r[3].toFixed(2)}</td></tr>`).join("")}`;
-      $("#id-n", root).textContent = rows.every(r => r[1] === 0) ? "This listing contains none of the query words. Its score is 0." : `Rare words that the listing contains add the most. Each listing&rsquo;s weights are then scaled to length 1, so long texts do not win only by length.`; };
-    root.addEventListener("input", draw); root.addEventListener("click", e => { const b = e.target.closest("[data-w]"); if (b) { $("#id-w", root).value = b.dataset.w; draw(); } }); draw(); });
-
-/* ---------- 11 ranking ---------- */
-sheet("Ranking", head("STEP 3 OF 3", "TF-IDF ranking: where does each score come from?", "Each bar is split by query word. Click a row to read the listing.") +
-  `<div class="row"><input type="text" id="rk-q" value="cheap bike for commuting" aria-label="Query">${Object.values(Q).map(q => `<button class="chipbtn" data-q="${esc(q.text)}">${esc(q.text)}</button>`).join("")}</div>
-  <div class="row" style="margin:.5em 0"><label class="ck"><input type="checkbox" id="rk-rel" checked> Mark listings a person judged relevant</label><span id="rk-leg" class="row"></span></div>
-  <div class="two wide"><div class="box" style="padding:.3em .6em" id="rk-l"></div><div><div class="box" id="rk-d"></div><p class="note" id="rk-n"></p></div></div>`,
-  root => { let sel = 0; const draw = () => { const q = $("#rk-q", root).value, r = rankAll(q), toks = [...new Set(tokenize(q, E0.o))], rel = $("#rk-rel", root).checked ? relOf(q) : null, top = r.ord.slice(0, 8), mx = r.sc[top[0]] || 1;
-      $("#rk-leg", root).innerHTML = toks.map((w, i) => `<span class="mono" style="display:inline-flex;align-items:center;gap:.35em"><i style="display:inline-block;width:.9em;height:.9em;background:${WC[i % 4]}"></i>${esc(w)}</span>`).join("");
-      $("#rk-l", root).innerHTML = top.map((i, k) => { const p = r.parts[i]; return `<div class="rk${k === sel ? " sel" : ""}" data-k="${k}"><span class="mono">#${k + 1}</span><span class="mono">${DOCS[i].id}</span><span class="t">${esc(DOCS[i].title)}</span><div class="stk" style="height:1em"><div class="stack" style="width:${r.sc[i] / mx * 100}%">${toks.map((w, j) => { const s = (p.find(x => x.w === w) || { s: 0 }).s; return s ? `<i style="width:${s / r.sc[i] * 100}%;background:${WC[j % 4]}" title="${esc(w)}"></i>` : ""; }).join("")}</div></div><span class="sc">${r.sc[i].toFixed(3)}</span><span>${rel && rel.includes(DOCS[i].id) ? '<span class="ok" title="judged relevant">✓</span>' : ""}</span></div>`; }).join("");
-      const i = top[sel], p = r.parts[i].slice().sort((a, b) => b.s - a.s);
-      $("#rk-d", root).innerHTML = r.sc[i] ? `<span class="tag">#${sel + 1} &middot; ${DOCS[i].id} &middot; ${DOCS[i].category} &middot; ${DOCS[i].price} EUR</span><p style="margin:.3em 0 .1em"><b>${esc(DOCS[i].title)}</b></p><p style="margin:0;font-size:.92em">${esc(DOCS[i].text)}</p>` : `<span class="mono">No listing contains these words.</span>`;
-      let msg = ""; if (r.sc[top[0]] > 0) { const t = r.parts[top[0]].slice().sort((a, b) => b.s - a.s)[0], pct = Math.round(t.s / r.sc[top[0]] * 100); msg = `#1 is &ldquo;${esc(DOCS[top[0]].title)}&rdquo;. ${pct}% of its score comes from &ldquo;${esc(t.w)}&rdquo;, which appears ${t.tf} time${t.tf === 1 ? "" : "s"} in that listing.`; const R = relOf(q); if (R && !R.includes(DOCS[top[0]].id)) msg += ` It is not among the listings a person judged relevant.`; }
-      $("#rk-n", root).innerHTML = msg; };
-    root.addEventListener("input", () => { sel = 0; draw(); }); root.addEventListener("click", e => { const b = e.target.closest("[data-q]"); if (b) { $("#rk-q", root).value = b.dataset.q; sel = 0; draw(); return; } const r = e.target.closest(".rk"); if (r) { sel = +r.dataset.k; draw(); } }); draw(); });
-
-/* ---------- 12 four queries ---------- */
-sheet("Four queries", head("RESULT", "Where the relevant listings end up", "Four test queries. For each one, a person marked four listings as relevant. Their rank in the TF-IDF ranking, and the query words they contain:") +
-  `<div class="row" id="fq-b">${Object.entries(Q).map(([k, q], i) => `<button class="tab${i ? "" : " on"}" data-k="${k}">${esc(q.text)}</button>`).join("")}</div>
-  <div class="box" style="margin-top:.9em"><div class="scroll"><table id="fq-t"></table></div><p id="fq-s" class="big" style="margin:.5em 0 0;font-size:1.7em"></p></div><p class="note" id="fq-n"></p>`,
-  root => { const draw = k => { $$(".tab", root).forEach(b => b.classList.toggle("on", b.dataset.k === k)); const q = Q[k], r = rankAll(q.text), toks = [...new Set(tokenize(q.text, E0.o))], pos = new Map(r.ord.map((i, p) => [i, p + 1]));
-      const rows = q.rel.map(id => { const i = byId[id].i, has = toks.filter(w => E0.df.has(w) && E0.toks[i].includes(w)); return { id, t: DOCS[i].title, p: pos.get(i), sc: r.sc[i], has }; });
-      $("#fq-t", root).innerHTML = `<tr><th>Relevant listing</th><th>Rank of 36</th><th>Score</th><th>Query words it contains</th></tr>` + rows.map(x => `<tr><td>${x.id} ${esc(x.t)}</td><td>${x.sc ? "#" + x.p : "not returned"}</td><td>${x.sc.toFixed(3)}</td><td>${toks.map(w => `<span class="chip${x.has.includes(w) ? " on" : " drop"}">${esc(w)}</span>`).join(" ")}</td></tr>`).join("");
-      const found = rows.filter(x => x.sc && x.p <= 4).length; $("#fq-s", root).textContent = `${found} of 4 in the top 4`;
-      const none = rows.filter(x => x.has.length === 0).map(x => x.id);
-      $("#fq-n", root).innerHTML = none.length ? `<b>${none.join(", ")}</b> ${none.length === 1 ? "shares" : "share"} no word with the query. ${none.length === 1 ? "It uses" : "They use"} other words (couch, pushchair, notebook, cycle). Keyword matching cannot know these mean the same. This is called the vocabulary mismatch problem.` : `Every relevant listing shares at least one word with the query, but words repeated in other listings can still push them down.`; };
-    $("#fq-b", root).onclick = e => { const b = e.target.closest("[data-k]"); if (b) draw(b.dataset.k); }; draw("q1"); });
+sheet("Decide", head("06", "You run the shop: what do you change?", "Each fix has a price. The best ones combine the text with the normal columns.") +
+ `<div class="box"><div class="scroll"><table style="font-size:.88em"><tr><th>Problem</th><th>Fix</th><th>Cost</th></tr>
+ <tr><td>Bundle wins by repeating &ldquo;bike&rdquo;</td><td>Limit the effect of repeated words</td><td>Low: a setting</td></tr>
+ <tr><td>Accessories shown before bikes</td><td>Use the category column; show Bikes first</td><td>Low: a rule</td></tr>
+ <tr><td>Title says more than description</td><td>Give the title more weight</td><td>Low</td></tr>
+ <tr><td>&ldquo;commuting&rdquo; &ne; &ldquo;commute&rdquo;</td><td>Reduce words to their root</td><td>Low: a library</td></tr>
+ <tr><td>Couch / sofa, pram / stroller</td><td>Synonym list, or a method that compares meaning</td><td>Medium to high</td></tr>
+ <tr><td>Sellers stuff keywords</td><td>Rules against it; check listings</td><td>Policy work</td></tr></table></div></div>
+ <p class="note">Reading the top of an alert list, or the top of a search, is the job. The ranking is a tool to decide what to read, never the decision itself.</p>`,
+ root => {});
 
 /* ---------- shell ---------- */
 const stage = $("#stage"), ticks = $("#ticks"); let cur = -1; const seen = new Set();
@@ -431,5 +251,4 @@ addEventListener("keydown", e => { const tg = e.target; if (tg.tagName === "SELE
 const h = parseInt((location.hash.match(/^#s(\d+)$/) || [])[1]); go(h > 0 && h <= S.length ? h - 1 : 0);
 </script>
 
-</body>
-</html>
+</script></body></html>
