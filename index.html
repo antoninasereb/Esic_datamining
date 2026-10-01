@@ -139,7 +139,7 @@ td.best{background:var(--ink);color:var(--paper);font-weight:700}
   <div id="foot">
    <div id="nav"><button class="btn" id="prev" aria-label="Previous sheet">&larr;</button><button class="btn" id="next" aria-label="Next sheet">&rarr;</button><button class="btn" id="bidx" aria-label="Sheet index">Sheets</button><button class="btn" id="bth" aria-label="Switch light and dark">Light/Dark</button></div>
    <div id="ticks"></div>
-   <div id="tb"><span>Sheet <b id="tbn">&nbsp;01/07</b></span><span id="tbt">Cover</span><span>Text mining for business</span></div>
+   <div id="tb"><span>Sheet <b id="tbn">&nbsp;01/09</b></span><span id="tbt">Cover</span><span>Text mining for business</span></div>
   </div>
  </div>
 </div>
@@ -173,7 +173,29 @@ sheet("Counting words", head("01", "What do viewers talk about?", "The same 2,00
   let k = "raw"; const draw = () => { const r = D.counts[k].slice(0, 12); $("#c-tag", root).textContent = T[k] + " (top 12)"; $("#c-b", root).innerHTML = bars(r, r[0][1]); $("#c-n", root).textContent = N[k]; $$("#c-t .tab", root).forEach(b => b.classList.toggle("on", b.dataset.k === k)); };
   $("#c-t", root).onclick = e => { const b = e.target.closest("[data-k]"); if (b) { k = b.dataset.k; draw(); } }; draw(); });
 
-sheet("Rare or common", head("02", "A rare word says more", "Click a word. How many of the 2,000 reviews contain it, and what weight does it get?") +
+
+const MINI = ["great film great story", "boring film boring story", "boring waste time", "great story"];
+const MV = [...new Set(MINI.flatMap(t => t.split(" ")))].sort(), MTF = MINI.map(t => MV.map(w => t.split(" ").filter(x => x === w).length));
+const MDF = MV.map((w, j) => MTF.filter(r => r[j] > 0).length), MIDF = MDF.map(d => Math.log((1 + MINI.length) / (1 + d)) + 1);
+const MW = MTF.map(r => r.map((x, j) => x * MIDF[j]));
+
+sheet("Four reviews", head("02", "Weigh four tiny reviews", "Click a word. How many times is it in each review (TF)? How rare is it (IDF)? What is the weight?") +
+ `<div class="row" id="m-w"></div>
+  <div class="box" id="m-b1" style="margin-top:.7em"><div class="scroll"><table id="m-t"></table></div></div>
+  <div class="row" style="margin-top:.6em"><label class="ck"><input type="checkbox" id="m-a"> show the full table (all words, all reviews)</label></div>
+  <div class="box" id="m-fb" style="margin-top:.5em" hidden><div class="scroll"><table id="m-f" style="font-size:.85em"></table></div></div><p class="note" id="m-n"></p>`,
+ root => { let k = MV.indexOf("story");
+  $("#m-w", root).innerHTML = MV.map((w, j) => `<button class="chipbtn" data-j="${j}">${w}</button>`).join("");
+  const draw = () => { const w = MV[k];
+   $("#m-t", root).innerHTML = `<tr><th></th><th>Review</th><th>TF</th><th>IDF</th><th>TF &times; IDF</th></tr>` + MINI.map((t, i) => `<tr><td>R${i + 1}</td><td>${t.split(" ").map(x => x === w ? `<b style="color:var(--signal)">${x}</b>` : x).join(" ")}</td><td>${MTF[i][k]}</td><td>${f2(MIDF[k])}</td><td><b>${f2(MW[i][k])}</b></td></tr>`).join("");
+   const full = $("#m-a", root).checked; $("#m-fb", root).hidden = !full; $("#m-b1", root).hidden = full;
+   if (full) $("#m-f", root).innerHTML = `<tr><th></th>${MV.map((x, j) => `<th${j === k ? ' style="color:var(--signal)"' : ""}>${x}</th>`).join("")}</tr>` + MW.map((r, i) => `<tr><td>R${i + 1}</td>${r.map((x, j) => `<td${j === k ? ' style="font-weight:700"' : ""}>${f2(x)}</td>`).join("")}</tr>`).join("");
+   $("#m-n", root).textContent = `"${w}" is in ${MDF[k]} of 4 reviews, so its IDF is ${f2(MIDF[k])}. The fewer reviews, the bigger the number.`;
+   $$("#m-w .chipbtn", root).forEach(b => b.classList.toggle("on", +b.dataset.j === k)); };
+  $("#m-w", root).onclick = e => { const b = e.target.closest("[data-j]"); if (b) { k = +b.dataset.j; draw(); } };
+  $("#m-a", root).onchange = draw; draw(); });
+
+sheet("Rare or common", head("03", "A rare word says more", "Click a word. How many of the 2,000 reviews contain it, and what weight does it get?") +
  `<div class="row" id="r-w"></div>
   <div class="box" style="margin-top:.8em"><div class="scroll"><table id="r-t"></table></div></div>
   <div class="row" style="margin-top:.7em"><label class="ck">times the word appears in a review (TF) <input type="range" id="r-tf" min="1" max="10" value="1"> <b id="r-tfv"></b></label></div>
@@ -190,7 +212,7 @@ sheet("Rare or common", head("02", "A rare word says more", "Click a word. How m
   $("#r-w", root).onclick = e => { const b = e.target.closest("[data-w]"); if (b) { sel = b.dataset.w; draw(); } };
   $("#r-tf", root).oninput = draw; draw(); });
 
-sheet("Alert list", head("03", "Which reviews do I read first?", "Weight of the complaint words in each review: boring, waste, awful, worst, terrible, dull, stupid, mess.") +
+sheet("Alert list", head("04", "Which reviews do I read first?", "Weight of the complaint words in each review: boring, waste, awful, worst, terrible, dull, stupid, mess.") +
  `<div class="row"><label class="ck"><input type="checkbox" id="a-l"> show the real label (positive or negative)</label></div>
   <div class="box" style="margin-top:.6em"><div class="scroll"><table id="a-t" style="font-size:.78em"></table></div></div><p class="note" id="a-n"></p>`,
  root => { const draw = () => { const on = $("#a-l", root).checked;
@@ -198,7 +220,21 @@ sheet("Alert list", head("03", "Which reviews do I read first?", "Weight of the 
    $("#a-n", root).textContent = on ? `Top 20 reviews: ${D.alert.neg20} of 20 are negative. Overall only half are. A good first filter, not a verdict: a sarcastic positive review can use "waste" too.` : "Read the five. Would you escalate them? Then tick the box."; };
   $("#a-l", root).onchange = draw; draw(); });
 
-sheet("Search the shop", head("04", "A search box for a marketplace", "Top 4 results for four customer queries.") +
+sheet("Match a query", head("05", "Match a query to four reviews", "Choose the words of the query. The score says how much the important words overlap, from 0 to 1.") +
+ `<div class="row" id="q-w"></div>
+  <div class="box" style="margin-top:.7em"><div id="q-b"></div></div><p class="note" id="q-n"></p>`,
+ root => { const on = new Set(["boring", "waste"]);
+  $("#q-w", root).innerHTML = MV.map(w => `<button class="chipbtn" data-w="${w}">${w}</button>`).join("");
+  const norm = v => Math.sqrt(sum(v.map(x => x * x))) || 1;
+  const draw = () => { const q = MV.map((w, j) => on.has(w) ? MIDF[j] : 0), nq = norm(q);
+   const sc = MW.map(r => on.size ? sum(r.map((x, j) => x * q[j])) / (norm(r) * nq) : 0);
+   $("#q-b", root).innerHTML = MINI.map((t, i) => `<div class="brow" style="grid-template-columns:15em minmax(0,1fr) 3.4em"><span class="lab">R${i + 1} ${esc(t)}</span><div class="track"><div class="fill" style="width:${Math.max(sc[i] * 100, 0.5)}%"></div></div><span class="val">${f2(sc[i])}</span></div>`).join("");
+   const best = sc.indexOf(Math.max(...sc));
+   $("#q-n", root).textContent = !on.size ? "Choose at least one word." : sc[best] === 0 ? "No review shares a word with the query: every score is 0." : `Best: R${best + 1}. A review scores zero if it shares no word with the query. The score only sorts; it is not a percentage.`;
+   $$("#q-w .chipbtn", root).forEach(b => b.classList.toggle("on", on.has(b.dataset.w))); };
+  $("#q-w", root).onclick = e => { const b = e.target.closest("[data-w]"); if (b) { on.has(b.dataset.w) ? on.delete(b.dataset.w) : on.add(b.dataset.w); draw(); } }; draw(); });
+
+sheet("Search the shop", head("06", "A search box for a marketplace", "Top 4 results for four customer queries.") +
  `<div class="row" id="s-t"></div>
   <div class="box" style="margin-top:.7em"><div class="scroll"><table id="s-r" style="font-size:.8em"></table></div></div>
   <p class="note" id="s-n" style="margin-top:.6em"></p><div class="box" style="margin-top:.5em"><div id="s-p"></div></div>`,
@@ -214,7 +250,7 @@ sheet("Search the shop", head("04", "A search box for a marketplace", "Top 4 res
    $("#s-n", root).textContent = NOTE[k]; $$("#s-t .tab", root).forEach(b => b.classList.toggle("on", +b.dataset.k === k)); };
   $("#s-t", root).onclick = e => { const b = e.target.closest("[data-k]"); if (b) { k = +b.dataset.k; draw(); } }; draw(); });
 
-sheet("Same meaning", head("05", "Different words, same meaning", "Reviews that say \"very bad\" in four ways.") +
+sheet("Same meaning", head("07", "Different words, same meaning", "Reviews that say \"very bad\" in four ways.") +
  `<div class="two"><div class="box"><span class="tag">Reviews containing the word</span><div id="y-b"></div></div>
   <div class="box"><span class="tag">Search \"awful\" and \"dreadful\"</span><div id="y-c"></div></div></div><p class="note" id="y-n"></p>`,
  root => { const r = D.syn.rows, m = Math.max(...r.map(x => x[1]));
@@ -222,7 +258,7 @@ sheet("Same meaning", head("05", "Different words, same meaning", "Reviews that 
   const s = D.syn; $("#y-c", root).innerHTML = bars([["awful", s.awful], ["dreadful", s.dreadful], ["both", s.both]], s.awful, "var(--w1)", "6em");
   $("#y-n", root).textContent = `A search for "awful" finds ${s.awful} reviews and misses most of the ${s.dreadful} that say "dreadful": only ${s.both} contain both. Counting words cannot see that they mean the same. This is the vocabulary mismatch problem.`; });
 
-sheet("Decide", head("06", "You run the shop: what do you change?", "Each fix has a price. The best ones combine the text with the normal columns.") +
+sheet("Decide", head("08", "You run the shop: what do you change?", "Each fix has a price. The best ones combine the text with the normal columns.") +
  `<div class="box"><div class="scroll"><table style="font-size:.88em"><tr><th>Problem</th><th>Fix</th><th>Cost</th></tr>
  <tr><td>Bundle wins by repeating &ldquo;bike&rdquo;</td><td>Limit the effect of repeated words</td><td>Low: a setting</td></tr>
  <tr><td>Accessories shown before bikes</td><td>Use the category column; show Bikes first</td><td>Low: a rule</td></tr>
